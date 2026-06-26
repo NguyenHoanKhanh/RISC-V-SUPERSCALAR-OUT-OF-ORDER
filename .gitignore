@@ -64,6 +64,10 @@ Thumbs.db
 # Local/generated files inside imported comparison cores
 MIPS_SUPERSCALAR/trash/
 
+# External repositories kept for reference or local benchmark sources.
+beebs/
+biriscv/
+
 # Only track the RISC-V tests used by this project.
 riscv-tests-master/*
 !riscv-tests-master/isa/
