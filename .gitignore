@@ -67,6 +67,7 @@ MIPS_SUPERSCALAR/trash/
 # External repositories kept for reference or local benchmark sources.
 beebs/
 biriscv/
+rsd_master/
 
 # Only track the RISC-V tests used by this project.
 riscv-tests-master/*
