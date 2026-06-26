@@ -1,0 +1,10 @@
+00300293 // addi x5,x0,3       x5  = 3
+00528333 // add  x6,x5,x5      x6  = 6      RAW on x5
+005343B3 // xor  x7,x6,x5      x7  = 5      RAW on x6, x5
+00B00513 // addi x10,x0,11     x10 = 11     independent
+01600593 // addi x11,x0,22     x11 = 22     independent
+00B50633 // add  x12,x10,x11   x12 = 33
+405606B3 // sub  x13,x12,x5    x13 = 30     RAW on x12
+0066F733 // and  x14,x13,x6    x14 = 6      RAW on x13, uses x6
+06400A13 // addi x20,x0,100    x20 = 100    independent
+0C800A93 // addi x21,x0,200    x21 = 200    independen

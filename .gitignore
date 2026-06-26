@@ -1,0 +1,81 @@
+# Build and simulation outputs
+build/
+sim/
+waveform/
+output_files/
+incremental_db/
+db/
+simulation/
+
+# Simulator artifacts
+*.vcd
+*.vvp
+*.fst
+*.wlf
+*.log
+*.jou
+transcript
+vsim.wlf
+
+# Quartus / FPGA generated artifacts
+*.sof
+*.pof
+*.cdf
+*.rpt
+*.summary
+*.done
+*.pin
+*.smsg
+*.qws
+*.bak
+*.orig
+
+# Generated memory/images
+*.elf
+*.bin
+*.o
+*.obj
+*.map
+*.lst
+*.dump
+
+# Archives and reports
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.pdf
+
+# Editor/index/temp files
+tags
+tmp_*
+*.tmp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Keep local IDE settings out unless explicitly needed
+.vscode/
+
+.git_broken_backup/
+**/.git_broken_backup/
+
+# Local/generated files inside imported comparison cores
+MIPS_SUPERSCALAR/trash/
+
+# Only track the RISC-V tests used by this project.
+riscv-tests-master/*
+!riscv-tests-master/isa/
+riscv-tests-master/isa/*
+!riscv-tests-master/isa/macros/
+riscv-tests-master/isa/macros/*
+!riscv-tests-master/isa/macros/scalar/
+riscv-tests-master/isa/macros/scalar/*
+!riscv-tests-master/isa/macros/scalar/test_macros.h
+!riscv-tests-master/isa/rv32im_clean/
+!riscv-tests-master/isa/rv32im_clean/**
+!riscv-tests-master/isa/rv32i_mips_safe/
+!riscv-tests-master/isa/rv32i_mips_safe/**
+!riscv-tests-master/isa/rv32i_mips_friendly/
+!riscv-tests-master/isa/rv32i_mips_friendly/**

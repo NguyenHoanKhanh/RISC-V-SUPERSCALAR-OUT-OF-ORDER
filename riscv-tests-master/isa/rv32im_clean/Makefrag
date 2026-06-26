@@ -1,0 +1,40 @@
+# Makefrag for RV32IM clean tests
+rv32im_clean_sc_tests = \
+	add \
+	addi \
+	and \
+	andi \
+	or \
+	ori \
+	xor \
+	xori \
+	sll \
+	slli \
+	srl \
+	srli \
+	sra \
+	srai \
+	slt \
+	slti \
+	sltu \
+	sltiu \
+	sub \
+	lb \
+	lbu \
+	lh \
+	lhu \
+	lw \
+	sb \
+	sh \
+	sw \
+	mul \
+	mulh \
+	mulhsu \
+	mulhu \
+	div \
+	divu \
+	rem \
+	remu \
+
+rv32im_clean_p_tests = $(addprefix rv32im_clean-p-, $(rv32im_clean_sc_tests))
+rv32im_clean_v_tests = $(addprefix rv32im_clean-v-, $(rv32im_clean_sc_tests))
