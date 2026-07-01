@@ -11,8 +11,11 @@ BEEBS_DIR := beebs
 BEEBS_PORT_DIR := beebs_port
 BEEBS_CRC_ITERS ?= 1024
 BEEBS_MAX_CYCLES ?= 500000
+BEEBS_BASE_CFLAGS := -fno-pic -fno-pie -mcmodel=medlow -mno-relax
 BEEBS_EXTRA_CFLAGS ?=
 BEEBS_EXTRA_PLUSARGS ?=
+BEEBS_RTL_DEFINES ?= -DCTRL_SAFE_MODE
+BEEBS_SUBSET := alu alu_parallel mem mix mix_parallel load_chain
 # The position of the testbench.
 TB := test/tb_datapath.v
 TB_ALU := test/tb_alu.v
@@ -84,7 +87,7 @@ MIPS_FRIENDLY_BENCHMARKS := $(addprefix mipsf_,$(MIPS_SUPPORTED_BENCHMARKS))
 SRC2_BENCHMARKS := $(addprefix src2_,$(BENCHMARKS))
 ONECYCLE_BENCHMARKS := $(addprefix 1cycle_,$(BENCHMARKS))
 
-.PHONY: all compile compile_superscalar run run_raw run_print run_raw_print raw_result print_result compile_alu run_alu wave_alu beebs_crc32 beebs_crc32_smoke src2_compile src2_run src2_run_raw src2_run_print src2_run_raw_print src2_raw_run_print 1cycle_compile 1cycle_run 1cycle_report_im view wave clean rebuild build_bench_elfs check_jumps allim report_im src2_report_im biriscv_allim biriscv_make_allim make_allim_biriscv biriscv_report_im biriscv_clean rsd_build rsd_run_hex rsd_allim rsd_make_allim make_allim_rsd rsd_report_im rsd_clean boom_info boom_build_elfs boom_allim boom_report_im mips_info mips_run_hex mips_run_raw mips_run_print mips_run_raw_print mips_alli mips_allim mips_make_alli mips_make_allim make_alli_mips make_allim_mips mips_report_i mips_report_im mips_friendly_alli mips_friendly_report_i mips_friendly_report_im $(BENCHMARKS) $(DEBUG_BENCHMARKS) $(SRC2_BENCHMARKS) $(ONECYCLE_BENCHMARKS) $(BIRISCV_BENCHMARKS) $(RSD_BENCHMARKS) $(BOOM_BENCHMARKS) $(MIPS_BENCHMARKS) $(MIPS_FRIENDLY_BENCHMARKS)
+.PHONY: all compile compile_superscalar run run_raw run_print run_raw_print raw_result print_result branch_loop_test lsq_stack_test branch_after_load_test branch_after_load_safe_test jal_skip_test jal_skip_safe_test compile_alu run_alu wave_alu beebs_subset_report beebs_subset_summary beebs_crc32 beebs_crc32_smoke beebs_crc32_check16 src2_compile src2_run src2_run_raw src2_run_print src2_run_raw_print src2_raw_run_print 1cycle_compile 1cycle_run 1cycle_report_im view wave clean rebuild build_bench_elfs check_jumps allim report_im src2_report_im biriscv_allim biriscv_make_allim make_allim_biriscv biriscv_report_im biriscv_clean rsd_build rsd_run_hex rsd_allim rsd_make_allim make_allim_rsd rsd_report_im rsd_clean boom_info boom_build_elfs boom_allim boom_report_im mips_info mips_run_hex mips_run_raw mips_run_print mips_run_raw_print mips_alli mips_allim mips_make_alli mips_make_allim make_alli_mips make_allim_mips mips_report_i mips_report_im mips_friendly_alli mips_friendly_report_i mips_friendly_report_im $(BENCHMARKS) $(DEBUG_BENCHMARKS) $(SRC2_BENCHMARKS) $(ONECYCLE_BENCHMARKS) $(BIRISCV_BENCHMARKS) $(RSD_BENCHMARKS) $(BOOM_BENCHMARKS) $(MIPS_BENCHMARKS) $(MIPS_FRIENDLY_BENCHMARKS)
 
 all: compile
 
@@ -120,12 +123,100 @@ raw_result: run_raw
 
 print_result: run_print
 
+branch_loop_test:
+	@echo "=========================================="
+	@echo "Running directed branch dependency loop test"
+	@echo "Expected: x28=0 and x29=1"
+	@echo "If x28=3, branch used stale x5 and exited after one loop."
+	@echo "=========================================="
+	@mkdir -p $(BUILDDIR) $(SIMDIR)
+	$(RISCV_GCC) -march=rv32im -mabi=ilp32 -nostdlib -nostartfiles -Ttext=0x0 \
+		test/asm/branch_loop.S -o $(BUILDDIR)/branch_loop.elf
+	$(RISCV_OBJCOPY) -O binary $(BUILDDIR)/branch_loop.elf $(BUILDDIR)/branch_loop.bin
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File tools/bin_to_word_hex.ps1 \
+		$(BUILDDIR)/branch_loop.bin $(SRC_DIR)/instr.hex $(SRC_DIR)/program_info.vh
+	$(IVERILOG) -g2012 -I $(SRC_DIR) -o $(OUT) $(TB)
+	$(VVP) $(OUT) +RAW_RESULT +PRINT_COMMITS +NO_COMMIT_LIMIT +MAX_CYCLES=500
+
+lsq_stack_test:
+	@echo "=========================================="
+	@echo "Running directed store/load stack test"
+	@echo "Expected: x28=2080 and x29=1"
+	@echo "=========================================="
+	@mkdir -p $(BUILDDIR) $(SIMDIR)
+	$(RISCV_GCC) -march=rv32im -mabi=ilp32 -nostdlib -nostartfiles -Ttext=0x0 \
+		test/asm/lsq_stack_test.S -o $(BUILDDIR)/lsq_stack_test.elf
+	$(RISCV_OBJCOPY) -O binary $(BUILDDIR)/lsq_stack_test.elf $(BUILDDIR)/lsq_stack_test.bin
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File tools/bin_to_word_hex.ps1 \
+		$(BUILDDIR)/lsq_stack_test.bin $(SRC_DIR)/instr.hex $(SRC_DIR)/program_info.vh
+	$(IVERILOG) -g2012 -I $(SRC_DIR) -o $(OUT) $(TB)
+	$(VVP) $(OUT) +RAW_RESULT +PRINT_COMMITS +NO_COMMIT_LIMIT +MAX_CYCLES=500
+
+branch_after_load_test:
+	@echo "=========================================="
+	@echo "Running directed branch-after-load test"
+	@echo "Expected: x28=2080 and x29=1"
+	@echo "If x29=-1, branch/load compare used wrong data."
+	@echo "=========================================="
+	@mkdir -p $(BUILDDIR) $(SIMDIR)
+	$(RISCV_GCC) -march=rv32im -mabi=ilp32 -nostdlib -nostartfiles -Ttext=0x0 \
+		test/asm/branch_after_load_test.S -o $(BUILDDIR)/branch_after_load_test.elf
+	$(RISCV_OBJCOPY) -O binary $(BUILDDIR)/branch_after_load_test.elf $(BUILDDIR)/branch_after_load_test.bin
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File tools/bin_to_word_hex.ps1 \
+		$(BUILDDIR)/branch_after_load_test.bin $(SRC_DIR)/instr.hex $(SRC_DIR)/program_info.vh
+	$(IVERILOG) -g2012 -I $(SRC_DIR) -o $(OUT) $(TB)
+	$(VVP) $(OUT) +RAW_RESULT +PRINT_COMMITS +NO_COMMIT_LIMIT +MAX_CYCLES=500
+
+jal_skip_test:
+	@echo "=========================================="
+	@echo "Running directed JAL skip/flush test"
+	@echo "Expected: x28=7 and x29=1"
+	@echo "If x28=123 or x29=-1, JAL did not suppress wrong-path commits."
+	@echo "=========================================="
+	@mkdir -p $(BUILDDIR) $(SIMDIR)
+	$(RISCV_GCC) -march=rv32im -mabi=ilp32 -nostdlib -nostartfiles -Ttext=0x0 \
+		test/asm/jal_skip_test.S -o $(BUILDDIR)/jal_skip_test.elf
+	$(RISCV_OBJCOPY) -O binary $(BUILDDIR)/jal_skip_test.elf $(BUILDDIR)/jal_skip_test.bin
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File tools/bin_to_word_hex.ps1 \
+		$(BUILDDIR)/jal_skip_test.bin $(SRC_DIR)/instr.hex $(SRC_DIR)/program_info.vh
+	$(IVERILOG) -g2012 -I $(SRC_DIR) -o $(OUT) $(TB)
+	$(VVP) $(OUT) +RAW_RESULT +PRINT_COMMITS +NO_COMMIT_LIMIT +MAX_CYCLES=500
+
+branch_after_load_safe_test:
+	@echo "=========================================="
+	@echo "Running directed branch-after-load test with CTRL_SAFE_MODE"
+	@echo "Expected: x28=2080 and x29=1, without committing the fail path."
+	@echo "=========================================="
+	@mkdir -p $(BUILDDIR) $(SIMDIR)
+	$(RISCV_GCC) -march=rv32im -mabi=ilp32 -nostdlib -nostartfiles -Ttext=0x0 \
+		test/asm/branch_after_load_test.S -o $(BUILDDIR)/branch_after_load_test.elf
+	$(RISCV_OBJCOPY) -O binary $(BUILDDIR)/branch_after_load_test.elf $(BUILDDIR)/branch_after_load_test.bin
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File tools/bin_to_word_hex.ps1 \
+		$(BUILDDIR)/branch_after_load_test.bin $(SRC_DIR)/instr.hex $(SRC_DIR)/program_info.vh
+	$(IVERILOG) -g2012 -DCTRL_SAFE_MODE -I $(SRC_DIR) -o $(OUT) $(TB)
+	$(VVP) $(OUT) +RAW_RESULT +PRINT_COMMITS +NO_COMMIT_LIMIT +MAX_CYCLES=500
+
+jal_skip_safe_test:
+	@echo "=========================================="
+	@echo "Running directed JAL skip/flush test with CTRL_SAFE_MODE"
+	@echo "Expected: x28=7 and x29=1, without committing x28=123/x29=-1."
+	@echo "=========================================="
+	@mkdir -p $(BUILDDIR) $(SIMDIR)
+	$(RISCV_GCC) -march=rv32im -mabi=ilp32 -nostdlib -nostartfiles -Ttext=0x0 \
+		test/asm/jal_skip_test.S -o $(BUILDDIR)/jal_skip_test.elf
+	$(RISCV_OBJCOPY) -O binary $(BUILDDIR)/jal_skip_test.elf $(BUILDDIR)/jal_skip_test.bin
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File tools/bin_to_word_hex.ps1 \
+		$(BUILDDIR)/jal_skip_test.bin $(SRC_DIR)/instr.hex $(SRC_DIR)/program_info.vh
+	$(IVERILOG) -g2012 -DCTRL_SAFE_MODE -I $(SRC_DIR) -o $(OUT) $(TB)
+	$(VVP) $(OUT) +RAW_RESULT +PRINT_COMMITS +NO_COMMIT_LIMIT +MAX_CYCLES=500
+
 beebs_crc32:
 	@echo "=========================================="
 	@echo "Running BEEBS benchmark on SuperScalar: crc32"
 	@echo "=========================================="
 	@mkdir -p $(BEEBS_BUILDDIR) $(SIMDIR)
 	$(RISCV_GCC) -march=rv32im -mabi=ilp32 -O2 -ffreestanding -fno-builtin -fno-common \
+		$(BEEBS_BASE_CFLAGS) \
 		-ffixed-x28 -ffixed-x29 -ffixed-x30 -ffixed-x31 \
 		-DBEEBS_CRC_ITERS=$(BEEBS_CRC_ITERS) $(BEEBS_EXTRA_CFLAGS) \
 		-nostdlib -nostartfiles -Wl,--no-relax -T $(BEEBS_PORT_DIR)/linker.ld \
@@ -139,11 +230,77 @@ beebs_crc32:
 		$(BEEBS_BUILDDIR)/crc32.bin $(SRC_DIR)/instr.hex $(SRC_DIR)/program_info.vh
 	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File tools/bin_to_word_hex.ps1 \
 		$(BEEBS_BUILDDIR)/crc32.bin $(SRC_DIR)/data.hex $(BEEBS_BUILDDIR)/crc32_data_info.vh
-	$(IVERILOG) -g2012 -DBEEBS_DATA_INIT -I $(SRC_DIR) -o $(BEEBS_OUT) $(TB)
+	$(IVERILOG) -g2012 $(BEEBS_RTL_DEFINES) -DBEEBS_DATA_INIT -I $(SRC_DIR) -o $(BEEBS_OUT) $(TB)
 	$(VVP) $(BEEBS_OUT) +RAW_RESULT +IGNORE_SCOREBOARD +NO_COMMIT_LIMIT +BEEBS_STOP_ON_X29 +MAX_CYCLES=$(BEEBS_MAX_CYCLES) $(BEEBS_EXTRA_PLUSARGS)
 
 beebs_crc32_smoke:
-	$(MAKE) beebs_crc32 BEEBS_CRC_ITERS=16 BEEBS_EXTRA_CFLAGS=-DBEEBS_SKIP_CHECK BEEBS_MAX_CYCLES=5000
+	$(MAKE) -f Makefile beebs_crc32 BEEBS_CRC_ITERS=16 BEEBS_EXTRA_CFLAGS=-DBEEBS_SKIP_CHECK BEEBS_MAX_CYCLES=5000
+
+beebs_crc32_check16:
+	$(MAKE) -f Makefile beebs_crc32 BEEBS_CRC_ITERS=16 BEEBS_EXTRA_CFLAGS="-DBEEBS_CRC_EXPECT=3523407757UL" BEEBS_MAX_CYCLES=20000
+
+beebs_%:
+	@echo "=========================================="
+	@echo "Running BEEBS subset benchmark on SuperScalar: $*"
+	@echo "=========================================="
+	@mkdir -p $(BEEBS_BUILDDIR) $(SIMDIR)
+	$(RISCV_GCC) -march=rv32im -mabi=ilp32 -O2 -ffreestanding -fno-builtin -fno-common \
+		$(BEEBS_BASE_CFLAGS) \
+		-ffixed-x28 -ffixed-x29 -ffixed-x30 -ffixed-x31 \
+		$(BEEBS_EXTRA_CFLAGS) \
+		-nostdlib -nostartfiles -Wl,--no-relax -T $(BEEBS_PORT_DIR)/linker.ld \
+		-I $(BEEBS_PORT_DIR)/include \
+		-I $(BEEBS_DIR)/support \
+		$(BEEBS_PORT_DIR)/start.S \
+		$(BEEBS_PORT_DIR)/beebs_$*_standalone.c \
+		-o $(BEEBS_BUILDDIR)/$*.elf
+	$(RISCV_OBJCOPY) -O binary $(BEEBS_BUILDDIR)/$*.elf $(BEEBS_BUILDDIR)/$*.bin
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File tools/bin_to_word_hex.ps1 \
+		$(BEEBS_BUILDDIR)/$*.bin $(SRC_DIR)/instr.hex $(SRC_DIR)/program_info.vh
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File tools/bin_to_word_hex.ps1 \
+		$(BEEBS_BUILDDIR)/$*.bin $(SRC_DIR)/data.hex $(BEEBS_BUILDDIR)/$*_data_info.vh
+	$(IVERILOG) -g2012 $(BEEBS_RTL_DEFINES) -DBEEBS_DATA_INIT -I $(SRC_DIR) -o $(BEEBS_OUT) $(TB)
+	$(VVP) $(BEEBS_OUT) +RAW_RESULT +IGNORE_SCOREBOARD +NO_COMMIT_LIMIT +BEEBS_STOP_ON_X29 +MAX_CYCLES=$(BEEBS_MAX_CYCLES) $(BEEBS_EXTRA_PLUSARGS)
+
+beebs_subset_report: beebs_alu beebs_alu_parallel beebs_mem beebs_mix beebs_mix_parallel beebs_load_chain
+	@echo "=========================================="
+	@echo "BEEBS lightweight subset completed"
+	@echo "=========================================="
+
+beebs_subset_summary:
+	@echo "=========================================="
+	@echo "BEEBS-compatible subset benchmark summary"
+	@echo "=========================================="
+	@mkdir -p $(SIMDIR)
+	@total_commits=0; total_cycles=0; total_bench=0; total_fail=0; \
+	printf "%-18s | %8s | %8s | %6s | %-6s | %s\n" "Benchmark" "Commits" "Cycles" "IPC" "Result" "x28"; \
+	printf "%-18s-+-%8s-+-%8s-+-%6s-+-%-6s-+-%s\n" "------------------" "--------" "--------" "------" "------" "----------"; \
+	for b in $(BEEBS_SUBSET); do \
+		printf "Running %-12s ... " "$$b" >&2; \
+		out=`$(MAKE) --no-print-directory beebs_$$b 2>&1`; status=$$?; \
+		echo "$$out" > "$(SIMDIR)/beebs_report_$$b.log"; \
+		commits=`printf "%s\n" "$$out" | sed -n 's/.*PERF: cycles=[0-9][0-9]* commits=\([0-9][0-9]*\) IPC=.*/\1/p' | tail -n 1`; \
+		cycles=`printf "%s\n" "$$out" | sed -n 's/.*PERF: cycles=\([0-9][0-9]*\) commits=[0-9][0-9]* IPC=.*/\1/p' | tail -n 1`; \
+		bench_ipc=`printf "%s\n" "$$out" | sed -n 's/.*PERF: cycles=[0-9][0-9]* commits=[0-9][0-9]* IPC=\([0-9.][0-9.]*\).*/\1/p' | tail -n 1`; \
+		result=`printf "%s\n" "$$out" | sed -n 's/.*BEEBS RESULT: \(PASS\).*/\1/p' | tail -n 1`; \
+		x28=`printf "%s\n" "$$out" | sed -n 's/.*RESULT REGS: x28=\([0-9][0-9]*\).*/\1/p' | tail -n 1`; \
+		if [ -z "$$x28" ]; then x28="-"; fi; \
+		if [ "$$status" -ne 0 ] || [ "$$result" != "PASS" ] || [ -z "$$commits" ] || [ -z "$$cycles" ]; then \
+			printf "FAIL/UNKNOWN, see $(SIMDIR)/beebs_report_$$b.log\n" >&2; \
+			printf "%-18s | %8s | %8s | %6s | %-6s | %s\n" "$$b" "$${commits:--}" "$${cycles:--}" "$${bench_ipc:--}" "FAIL" "$$x28"; \
+			total_fail=`expr $$total_fail + 1`; \
+		else \
+			printf "PASS commits=%s cycles=%s IPC=%s\n" "$$commits" "$$cycles" "$$bench_ipc" >&2; \
+			printf "%-18s | %8s | %8s | %6s | %-6s | %s\n" "$$b" "$$commits" "$$cycles" "$$bench_ipc" "PASS" "$$x28"; \
+			total_commits=`expr $$total_commits + $$commits`; \
+			total_cycles=`expr $$total_cycles + $$cycles`; \
+		fi; \
+		total_bench=`expr $$total_bench + 1`; \
+	done; \
+	total_ipc=`awk -v c=$$total_commits -v y=$$total_cycles 'BEGIN { if (y > 0) printf "%.3f", c / y; else printf "0.000" }'`; \
+	printf "%-18s-+-%8s-+-%8s-+-%6s-+-%-6s-+-%s\n" "------------------" "--------" "--------" "------" "------" "----------"; \
+	printf "%-18s | %8d | %8d | %6s | %-6s | %s\n" "TOTAL" "$$total_commits" "$$total_cycles" "$$total_ipc" "$$([ $$total_fail -eq 0 ] && echo PASS || echo FAIL:$$total_fail)" "-"; \
+	echo "Logs: $(SIMDIR)/beebs_report_<benchmark>.log"
 
 compile_alu:
 	@$(POWERSHELL) -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(SIMDIR)' | Out-Null"

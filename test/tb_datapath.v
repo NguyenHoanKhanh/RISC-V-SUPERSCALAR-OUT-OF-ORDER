@@ -27,6 +27,8 @@ module tb_datapath;
     localparam [`PC_WIDTH - 1 : 0] DEBUG_PC_HI = 32'h000000c0;
     localparam [`PC_WIDTH - 1 : 0] DEBUG_ADD_T5_PC = 32'h00000084;
     reg print_commits;
+    reg print_profile;
+    reg print_raw_regs;
     reg debug_verbose;
     reg raw_result;
     reg ignore_scoreboard;
@@ -55,6 +57,8 @@ module tb_datapath;
         dp_rstn = 1'b0;
         dp_i_ce = 1'b0;
         print_commits = 1'b0;
+        print_profile = 1'b0;
+        print_raw_regs = 1'b0;
         debug_verbose = 1'b0;
         raw_result = 1'b0;
         ignore_scoreboard = 1'b0;
@@ -67,6 +71,8 @@ module tb_datapath;
         arf_display_addr_1 = {`AWIDTH{1'b0}};
         arf_display_addr_2 = {`AWIDTH{1'b0}};
         print_commits = $test$plusargs("PRINT_COMMITS");
+        print_profile = $test$plusargs("PRINT_PROFILE");
+        print_raw_regs = $test$plusargs("PRINT_RAW_REGS");
         debug_verbose = $test$plusargs("DEBUG_VERBOSE");
         raw_result = $test$plusargs("RAW_RESULT");
         ignore_scoreboard = $test$plusargs("IGNORE_SCOREBOARD");
@@ -146,13 +152,14 @@ module tb_datapath;
                    scoreboard_ipc);
         end
       end
-      print_pipeline_profile();
+      if (print_profile) begin
+        print_pipeline_profile();
+      end
       if (scoreboard_seen && (scoreboard_x31 == 32'd1)) begin
         $display("RESULT: PASS");
       end else if (scoreboard_seen && (scoreboard_x31 == 32'hffffffff)) begin
         $display("RESULT: FAIL test_id=%0d", scoreboard_x30);
       end else if (beebs_stop_on_x29 && beebs_done) begin
-        print_raw_registers();
         if (beebs_status == 32'd1) begin
           $display("BEEBS RESULT: PASS x28=%0d (0x%08h)",
                    dut.u_arf.arf_value[28],
@@ -164,8 +171,17 @@ module tb_datapath;
                    dut.u_arf.arf_value[28],
                    dut.u_arf.arf_value[28]);
         end
+        if (print_raw_regs) begin
+          print_raw_registers();
+        end else begin
+          print_result_registers();
+        end
       end else if (raw_result) begin
-        print_raw_registers();
+        if (print_raw_regs) begin
+          print_raw_registers();
+        end else begin
+          print_result_registers();
+        end
         $display("RESULT: RAW RUN COMPLETE, NO PASS/FAIL CHECK");
       end else begin
         $display("RESULT: INCOMPLETE or NO SCOREBOARD UPDATE");
@@ -186,6 +202,20 @@ module tb_datapath;
                    dut.u_arf.arf_value[reg_i],
                    dut.u_arf.arf_value[reg_i]);
         end
+      end
+    endtask
+
+    task print_result_registers;
+      begin
+        $display("RESULT REGS: x28=%0d (0x%08h) x29=%0d (0x%08h) x30=%0d (0x%08h) x31=%0d (0x%08h)",
+                 dut.u_arf.arf_value[28],
+                 dut.u_arf.arf_value[28],
+                 dut.u_arf.arf_value[29],
+                 dut.u_arf.arf_value[29],
+                 dut.u_arf.arf_value[30],
+                 dut.u_arf.arf_value[30],
+                 dut.u_arf.arf_value[31],
+                 dut.u_arf.arf_value[31]);
       end
     endtask
 
@@ -211,8 +241,10 @@ module tb_datapath;
 
     task print_beebs_head_debug;
       integer dbg_found_rs;
+      integer dbg_lq_idx;
       begin
         dbg_found_rs = 0;
+        dbg_lq_idx = 0;
         $display("BEEBS_HEAD_DEBUG cycle=%0d pc1=0x%08h pc2=0x%08h head=%0d valid=%0d done=%0d opcode=%07b funct3=%03b funct7=%07b rd=%0d new_prd=%0d used=%0d",
                  cycle_count,
                  dp_o_pc_1,
@@ -278,6 +310,76 @@ module tb_datapath;
                  dut.cpl_tag_1,
                  dut.cpl_valid_2,
                  dut.cpl_tag_2);
+        if (dut.u_rob.head_valid && dut.u_rob.ent_is_load[dut.u_rob.head_ptr]) begin
+          dbg_lq_idx = dut.u_rob.ent_ld_idx[dut.u_rob.head_ptr];
+          $display("  LQ head-load: ld_idx=%0d valid=%0d addr_valid=%0d query_wait=%0d mem_wait=%0d done=%0d complete_sent=%0d rob_tag=%0d prd=%0d funct3=%03b addr=0x%08h raw=0x%08h",
+                   dbg_lq_idx,
+                   dut.u_load_queue.ent_valid[dbg_lq_idx],
+                   dut.u_load_queue.ent_addr_valid[dbg_lq_idx],
+                   dut.u_load_queue.ent_query_wait[dbg_lq_idx],
+                   dut.u_load_queue.ent_mem_wait[dbg_lq_idx],
+                   dut.u_load_queue.ent_done[dbg_lq_idx],
+                   dut.u_load_queue.ent_complete_sent[dbg_lq_idx],
+                   dut.u_load_queue.ent_rob_tag[dbg_lq_idx],
+                   dut.u_load_queue.ent_prd[dbg_lq_idx],
+                   dut.u_load_queue.ent_funct3[dbg_lq_idx],
+                   dut.u_load_queue.ent_addr[dbg_lq_idx],
+                   dut.u_load_queue.ent_raw_data[dbg_lq_idx]);
+          $display("  LQ query: q1=%0d ptr=%0d addr=0x%08h older=%0d | q2=%0d ptr=%0d addr=0x%08h older=%0d",
+                   dut.lq_o_sq_query_valid_1,
+                   dut.lq_o_sq_query_ptr_1,
+                   dut.lq_o_sq_query_addr_1,
+                   dut.lq_o_sq_query_older_store_count_1,
+                   dut.lq_o_sq_query_valid_2,
+                   dut.lq_o_sq_query_ptr_2,
+                   dut.lq_o_sq_query_addr_2,
+                   dut.lq_o_sq_query_older_store_count_2);
+          $display("  SQ resp->LQ: r1=%0d ptr=%0d read_mem=%0d fwd=%0d wait=%0d data=0x%08h | r2=%0d ptr=%0d read_mem=%0d fwd=%0d wait=%0d data=0x%08h",
+                   dut.lq_i_sq_resp_valid_1,
+                   dut.lq_i_sq_resp_ptr_1,
+                   dut.lq_i_sq_resp_read_mem_1,
+                   dut.lq_i_sq_resp_forward_valid_1,
+                   dut.lq_i_sq_resp_wait_1,
+                   dut.lq_i_sq_resp_forward_data_1,
+                   dut.lq_i_sq_resp_valid_2,
+                   dut.lq_i_sq_resp_ptr_2,
+                   dut.lq_i_sq_resp_read_mem_2,
+                   dut.lq_i_sq_resp_forward_valid_2,
+                   dut.lq_i_sq_resp_wait_2,
+                   dut.lq_i_sq_resp_forward_data_2);
+          $display("  LQ mem: req1=%0d ptr=%0d addr=0x%08h q1=%0d/%0d/0x%08h resp1=%0d ptr=%0d data=0x%08h | req2=%0d ptr=%0d addr=0x%08h q2=%0d/%0d/0x%08h resp2=%0d ptr=%0d data=0x%08h",
+                   dut.lq_o_mem_req_valid_1,
+                   dut.lq_o_mem_req_ptr_1,
+                   dut.lq_o_mem_req_addr_1,
+                   dut.lq_mem_req_valid_1_q,
+                   dut.lq_mem_req_ptr_1_q,
+                   dut.lq_mem_req_addr_1_q,
+                   dut.lq_i_mem_resp_valid_1,
+                   dut.lq_i_mem_resp_ptr_1,
+                   dut.lq_i_mem_resp_data_1,
+                   dut.lq_o_mem_req_valid_2,
+                   dut.lq_o_mem_req_ptr_2,
+                   dut.lq_o_mem_req_addr_2,
+                   dut.lq_mem_req_valid_2_q,
+                   dut.lq_mem_req_ptr_2_q,
+                   dut.lq_mem_req_addr_2_q,
+                   dut.lq_i_mem_resp_valid_2,
+                   dut.lq_i_mem_resp_ptr_2,
+                   dut.lq_i_mem_resp_data_2);
+          $display("  LQ complete: c1=%0d rob=%0d prd=%0d addr=0x%08h raw=0x%08h accept=%0d | c2=%0d rob=%0d prd=%0d addr=0x%08h raw=0x%08h accept=%0d",
+                   dut.lq_o_complete_valid_1,
+                   dut.lq_o_complete_rob_tag_1,
+                   dut.lq_o_complete_prd_1,
+                   dut.lq_o_complete_addr_1,
+                   dut.lq_o_complete_raw_data_1,
+                   dut.lq_i_complete_accept_1,
+                   dut.lq_o_complete_valid_2,
+                   dut.lq_o_complete_rob_tag_2,
+                   dut.lq_o_complete_prd_2,
+                   dut.lq_o_complete_addr_2,
+                   dut.lq_o_complete_raw_data_2,
+                   dut.lq_i_complete_accept_2);
+        end
       end
     endtask
 

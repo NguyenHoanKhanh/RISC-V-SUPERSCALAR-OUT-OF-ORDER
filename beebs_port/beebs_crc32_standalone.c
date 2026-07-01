@@ -1,6 +1,8 @@
 typedef unsigned char BYTE;
 typedef unsigned long DWORD;
 
+#include "beebs_finish_inline.h"
+
 #ifndef BEEBS_CRC_ITERS
 #define BEEBS_CRC_ITERS 1024
 #endif
@@ -55,7 +57,7 @@ static const DWORD crc_32_tab[] = {
    0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
 };
 
-void __attribute__((noreturn)) beebs_entry(void)
+void beebs_entry(void)
 {
     volatile long int seed = 0;
     volatile DWORD oldcrc32 = 0xffffffffUL;
@@ -76,15 +78,5 @@ void __attribute__((noreturn)) beebs_entry(void)
 #else
     status = (result == BEEBS_CRC_EXPECT) ? 1 : -1;
 #endif
-    __asm__ volatile (
-        "mv x28, %0\n"
-        "mv x29, %1\n"
-        :
-        : "r"(result), "r"(status)
-        : "x28", "x29", "memory"
-    );
-
-    for (;;) {
-        __asm__ volatile ("addi x0, x0, 0");
-    }
+    beebs_finish_inline(result, status);
 }

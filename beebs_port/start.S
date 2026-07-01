@@ -1,5 +1,6 @@
 .section .text.start
 .globl _start
 _start:
-    la sp, __stack_top
-    j beebs_entry
+    lui sp, 0x4
+    addi sp, sp, -4
+    jal x0, beebs_entry
