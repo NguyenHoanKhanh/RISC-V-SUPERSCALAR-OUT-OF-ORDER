@@ -121,25 +121,27 @@ module load_queue (
     output     [`ROB_IDX_W:0]   lq_o_count
 );
 
-    localparam [`ROB_IDX_W:0] LQ_CAPACITY = `ROB_SIZE;
+    localparam [`ROB_IDX_W:0] LQ_CAPACITY = `LQ_SIZE;
     localparam [`ROB_IDX_W:0] LQ_ONE      = {{`ROB_IDX_W{1'b0}}, 1'b1};
     localparam [`ROB_IDX_W:0] LQ_TWO      = {{(`ROB_IDX_W-1){1'b0}}, 2'b10};
+    localparam [`ROB_IDX_W-1:0] LQ_LAST_IDX = `LQ_SIZE - 1;
+    localparam [`ROB_IDX_W-1:0] LQ_LAST_MINUS1 = `LQ_SIZE - 2;
 
-    reg                  ent_valid       [0:`ROB_SIZE-1];
-    reg                  ent_addr_valid  [0:`ROB_SIZE-1];
-    reg                  ent_query_wait  [0:`ROB_SIZE-1];
-    reg                  ent_mem_wait    [0:`ROB_SIZE-1];
-    reg                  ent_done        [0:`ROB_SIZE-1];
-    reg                  ent_complete_sent [0:`ROB_SIZE-1];
+    reg                  ent_valid       [0:`LQ_SIZE-1];
+    reg                  ent_addr_valid  [0:`LQ_SIZE-1];
+    reg                  ent_query_wait  [0:`LQ_SIZE-1];
+    reg                  ent_mem_wait    [0:`LQ_SIZE-1];
+    reg                  ent_done        [0:`LQ_SIZE-1];
+    reg                  ent_complete_sent [0:`LQ_SIZE-1];
 
-    reg [`ROB_IDX_W-1:0] ent_sq_tail_snapshot [0:`ROB_SIZE-1];
-    reg [`ROB_IDX_W:0]   ent_older_store_count [0:`ROB_SIZE-1];
-    reg [`ROB_IDX_W-1:0] ent_rob_tag [0:`ROB_SIZE-1];
-    reg [`RAT_SIZE-1:0]  ent_prd     [0:`ROB_SIZE-1];
-    reg [`FUNCT3_WIDTH-1:0] ent_funct3 [0:`ROB_SIZE-1];
-    reg [`DWIDTH-1:0]    ent_addr    [0:`ROB_SIZE-1];
-    reg [3:0]            ent_mask    [0:`ROB_SIZE-1];
-    reg [`DWIDTH-1:0]    ent_raw_data [0:`ROB_SIZE-1];
+    reg [`ROB_IDX_W-1:0] ent_sq_tail_snapshot [0:`LQ_SIZE-1];
+    reg [`ROB_IDX_W:0]   ent_older_store_count [0:`LQ_SIZE-1];
+    reg [`ROB_IDX_W-1:0] ent_rob_tag [0:`LQ_SIZE-1];
+    reg [`RAT_SIZE-1:0]  ent_prd     [0:`LQ_SIZE-1];
+    reg [`FUNCT3_WIDTH-1:0] ent_funct3 [0:`LQ_SIZE-1];
+    reg [`DWIDTH-1:0]    ent_addr    [0:`LQ_SIZE-1];
+    reg [3:0]            ent_mask    [0:`LQ_SIZE-1];
+    reg [`DWIDTH-1:0]    ent_raw_data [0:`LQ_SIZE-1];
 
     reg [`ROB_IDX_W-1:0] head_ptr;
     reg [`ROB_IDX_W-1:0] tail_ptr;
@@ -151,11 +153,57 @@ module load_queue (
 
     reg [`ROB_IDX_W-1:0] complete_idx_1;
     reg [`ROB_IDX_W-1:0] complete_idx_2;
+    reg [`ROB_IDX_W-1:0] complete_pick_idx_1;
+    reg [`ROB_IDX_W-1:0] complete_pick_idx_2;
+    reg complete_pick_valid_1;
+    reg complete_pick_valid_2;
+    reg [`ROB_IDX_W-1:0] complete_pick_rob_tag_1;
+    reg [`ROB_IDX_W-1:0] complete_pick_rob_tag_2;
+    reg [`RAT_SIZE-1:0] complete_pick_prd_1;
+    reg [`RAT_SIZE-1:0] complete_pick_prd_2;
+    reg [`FUNCT3_WIDTH-1:0] complete_pick_funct3_1;
+    reg [`FUNCT3_WIDTH-1:0] complete_pick_funct3_2;
+    reg [`DWIDTH-1:0] complete_pick_raw_data_1;
+    reg [`DWIDTH-1:0] complete_pick_raw_data_2;
+    reg [`DWIDTH-1:0] complete_pick_addr_1;
+    reg [`DWIDTH-1:0] complete_pick_addr_2;
 
     wire [`ROB_IDX_W:0] free_count = LQ_CAPACITY - used_count;
 
-    wire [`ROB_IDX_W-1:0] head_plus_1 = head_ptr + {{(`ROB_IDX_W-1){1'b0}}, 1'b1};
-    wire [`ROB_IDX_W-1:0] tail_plus_1 = tail_ptr + {{(`ROB_IDX_W-1){1'b0}}, 1'b1};
+    function [`ROB_IDX_W-1:0] lq_ptr_plus1;
+        input [`ROB_IDX_W-1:0] ptr;
+        begin
+            lq_ptr_plus1 = (ptr == LQ_LAST_IDX) ? {`ROB_IDX_W{1'b0}} :
+                                                (ptr + {{(`ROB_IDX_W-1){1'b0}}, 1'b1});
+        end
+    endfunction
+
+    function [`ROB_IDX_W-1:0] lq_ptr_plus2;
+        input [`ROB_IDX_W-1:0] ptr;
+        begin
+            lq_ptr_plus2 = (ptr >= LQ_LAST_MINUS1) ? (ptr - LQ_LAST_MINUS1) :
+                                                     (ptr + {{(`ROB_IDX_W-2){1'b0}}, 2'b10});
+        end
+    endfunction
+
+    function [`ROB_IDX_W-1:0] lq_ptr_add_count;
+        input [`ROB_IDX_W-1:0] ptr;
+        input [`ROB_IDX_W:0] count;
+        begin
+            if (count == LQ_TWO) begin
+                lq_ptr_add_count = lq_ptr_plus2(ptr);
+            end
+            else if (count == LQ_ONE) begin
+                lq_ptr_add_count = lq_ptr_plus1(ptr);
+            end
+            else begin
+                lq_ptr_add_count = ptr;
+            end
+        end
+    endfunction
+
+    wire [`ROB_IDX_W-1:0] head_plus_1 = lq_ptr_plus1(head_ptr);
+    wire [`ROB_IDX_W-1:0] tail_plus_1 = lq_ptr_plus1(tail_ptr);
 
     wire commit1_ok;
     wire commit2_ok;
@@ -189,7 +237,7 @@ module load_queue (
 
     wire [`ROB_IDX_W-1:0] alloc1_ptr = tail_ptr;
     wire [`ROB_IDX_W-1:0] alloc2_ptr =
-        tail_ptr + {{(`ROB_IDX_W-1){1'b0}}, alloc1_ok};
+        alloc1_ok ? lq_ptr_plus1(tail_ptr) : tail_ptr;
 
     wire [`ROB_IDX_W:0] push_n = {{`ROB_IDX_W{1'b0}}, alloc1_ok} +
                                  {{`ROB_IDX_W{1'b0}}, alloc2_ok};
@@ -246,73 +294,96 @@ module load_queue (
         lq_o_mem_req_addr_1 = {`DWIDTH{1'b0}};
         lq_o_mem_req_addr_2 = {`DWIDTH{1'b0}};
 
-        lq_o_complete_valid_1 = 1'b0;
-        lq_o_complete_valid_2 = 1'b0;
-        complete_idx_1 = {`ROB_IDX_W{1'b0}};
-        complete_idx_2 = {`ROB_IDX_W{1'b0}};
-        lq_o_complete_rob_tag_1 = {`ROB_IDX_W{1'b0}};
-        lq_o_complete_rob_tag_2 = {`ROB_IDX_W{1'b0}};
-        lq_o_complete_prd_1 = {`RAT_SIZE{1'b0}};
-        lq_o_complete_prd_2 = {`RAT_SIZE{1'b0}};
-        lq_o_complete_funct3_1 = {`FUNCT3_WIDTH{1'b0}};
-        lq_o_complete_funct3_2 = {`FUNCT3_WIDTH{1'b0}};
-        lq_o_complete_raw_data_1 = {`DWIDTH{1'b0}};
-        lq_o_complete_raw_data_2 = {`DWIDTH{1'b0}};
-        lq_o_complete_addr_1 = {`DWIDTH{1'b0}};
-        lq_o_complete_addr_2 = {`DWIDTH{1'b0}};
+        complete_pick_valid_1 = 1'b0;
+        complete_pick_valid_2 = 1'b0;
+        complete_pick_idx_1 = {`ROB_IDX_W{1'b0}};
+        complete_pick_idx_2 = {`ROB_IDX_W{1'b0}};
+        complete_pick_rob_tag_1 = {`ROB_IDX_W{1'b0}};
+        complete_pick_rob_tag_2 = {`ROB_IDX_W{1'b0}};
+        complete_pick_prd_1 = {`RAT_SIZE{1'b0}};
+        complete_pick_prd_2 = {`RAT_SIZE{1'b0}};
+        complete_pick_funct3_1 = {`FUNCT3_WIDTH{1'b0}};
+        complete_pick_funct3_2 = {`FUNCT3_WIDTH{1'b0}};
+        complete_pick_raw_data_1 = {`DWIDTH{1'b0}};
+        complete_pick_raw_data_2 = {`DWIDTH{1'b0}};
+        complete_pick_addr_1 = {`DWIDTH{1'b0}};
+        complete_pick_addr_2 = {`DWIDTH{1'b0}};
 
-        for (cidx = 0; cidx < `ROB_SIZE; cidx = cidx + 1) begin
-            if (ent_valid[cidx] && ent_query_wait[cidx] && !ent_done[cidx]) begin
+        for (cidx = 0; cidx < `LQ_SIZE; cidx = cidx + 1) begin
+            sidx = head_ptr + cidx;
+            if (sidx >= `LQ_SIZE) begin
+                sidx = sidx - `LQ_SIZE;
+            end
+
+            if (ent_valid[sidx] && ent_query_wait[sidx] && !ent_done[sidx]) begin
                 if (!lq_o_sq_query_valid_1) begin
                     lq_o_sq_query_valid_1 = 1'b1;
-                    lq_o_sq_query_ptr_1 = cidx[`ROB_IDX_W-1:0];
-                    lq_o_sq_query_addr_1 = ent_addr[cidx];
-                    lq_o_sq_query_mask_1 = ent_mask[cidx];
-                    lq_o_sq_query_tail_snapshot_1 = ent_sq_tail_snapshot[cidx];
-                    lq_o_sq_query_older_store_count_1 = ent_older_store_count[cidx];
+                    lq_o_sq_query_ptr_1 = sidx[`ROB_IDX_W-1:0];
+                    lq_o_sq_query_addr_1 = ent_addr[sidx];
+                    lq_o_sq_query_mask_1 = ent_mask[sidx];
+                    lq_o_sq_query_tail_snapshot_1 = ent_sq_tail_snapshot[sidx];
+                    lq_o_sq_query_older_store_count_1 = ent_older_store_count[sidx];
                 end
                 else if (!lq_o_sq_query_valid_2) begin
                     lq_o_sq_query_valid_2 = 1'b1;
-                    lq_o_sq_query_ptr_2 = cidx[`ROB_IDX_W-1:0];
-                    lq_o_sq_query_addr_2 = ent_addr[cidx];
-                    lq_o_sq_query_mask_2 = ent_mask[cidx];
-                    lq_o_sq_query_tail_snapshot_2 = ent_sq_tail_snapshot[cidx];
-                    lq_o_sq_query_older_store_count_2 = ent_older_store_count[cidx];
+                    lq_o_sq_query_ptr_2 = sidx[`ROB_IDX_W-1:0];
+                    lq_o_sq_query_addr_2 = ent_addr[sidx];
+                    lq_o_sq_query_mask_2 = ent_mask[sidx];
+                    lq_o_sq_query_tail_snapshot_2 = ent_sq_tail_snapshot[sidx];
+                    lq_o_sq_query_older_store_count_2 = ent_older_store_count[sidx];
                 end
             end
 
-            if (ent_valid[cidx] && ent_mem_wait[cidx] && !ent_done[cidx]) begin
+            if (ent_valid[sidx] && ent_mem_wait[sidx] && !ent_done[sidx]) begin
                 if (!lq_o_mem_req_valid_1) begin
                     lq_o_mem_req_valid_1 = 1'b1;
-                    lq_o_mem_req_ptr_1 = cidx[`ROB_IDX_W-1:0];
-                    lq_o_mem_req_addr_1 = ent_addr[cidx];
+                    lq_o_mem_req_ptr_1 = sidx[`ROB_IDX_W-1:0];
+                    lq_o_mem_req_addr_1 = ent_addr[sidx];
                 end
                 else if (!lq_o_mem_req_valid_2) begin
                     lq_o_mem_req_valid_2 = 1'b1;
-                    lq_o_mem_req_ptr_2 = cidx[`ROB_IDX_W-1:0];
-                    lq_o_mem_req_addr_2 = ent_addr[cidx];
+                    lq_o_mem_req_ptr_2 = sidx[`ROB_IDX_W-1:0];
+                    lq_o_mem_req_addr_2 = ent_addr[sidx];
                 end
             end
 
-            if (ent_valid[cidx] && ent_done[cidx] && !ent_complete_sent[cidx]) begin
-                if (!lq_o_complete_valid_1) begin
-                    lq_o_complete_valid_1 = 1'b1;
-                    complete_idx_1 = cidx[`ROB_IDX_W-1:0];
-                    lq_o_complete_rob_tag_1 = ent_rob_tag[cidx];
-                    lq_o_complete_prd_1 = ent_prd[cidx];
-                    lq_o_complete_funct3_1 = ent_funct3[cidx];
-                    lq_o_complete_raw_data_1 = ent_raw_data[cidx];
-                    lq_o_complete_addr_1 = ent_addr[cidx];
-                end
-                else if (!lq_o_complete_valid_2) begin
-                    lq_o_complete_valid_2 = 1'b1;
-                    complete_idx_2 = cidx[`ROB_IDX_W-1:0];
-                    lq_o_complete_rob_tag_2 = ent_rob_tag[cidx];
-                    lq_o_complete_prd_2 = ent_prd[cidx];
-                    lq_o_complete_funct3_2 = ent_funct3[cidx];
-                    lq_o_complete_raw_data_2 = ent_raw_data[cidx];
-                    lq_o_complete_addr_2 = ent_addr[cidx];
-                end
+        end
+
+        // Timing-first completion policy: only complete from the LQ head pair.
+        // This avoids a 32-entry ent_done -> completion scan on the critical path.
+        if (ent_valid[head_ptr] && ent_done[head_ptr] && !ent_complete_sent[head_ptr] &&
+            !(lq_o_complete_valid_1 && (head_ptr == complete_idx_1)) &&
+            !(lq_o_complete_valid_2 && (head_ptr == complete_idx_2))) begin
+            complete_pick_valid_1 = 1'b1;
+            complete_pick_idx_1 = head_ptr;
+            complete_pick_rob_tag_1 = ent_rob_tag[head_ptr];
+            complete_pick_prd_1 = ent_prd[head_ptr];
+            complete_pick_funct3_1 = ent_funct3[head_ptr];
+            complete_pick_raw_data_1 = ent_raw_data[head_ptr];
+            complete_pick_addr_1 = ent_addr[head_ptr];
+        end
+
+        if (ent_valid[head_plus_1] && ent_done[head_plus_1] &&
+            !ent_complete_sent[head_plus_1] &&
+            !(lq_o_complete_valid_1 && (head_plus_1 == complete_idx_1)) &&
+            !(lq_o_complete_valid_2 && (head_plus_1 == complete_idx_2))) begin
+            if (!complete_pick_valid_1) begin
+                complete_pick_valid_1 = 1'b1;
+                complete_pick_idx_1 = head_plus_1;
+                complete_pick_rob_tag_1 = ent_rob_tag[head_plus_1];
+                complete_pick_prd_1 = ent_prd[head_plus_1];
+                complete_pick_funct3_1 = ent_funct3[head_plus_1];
+                complete_pick_raw_data_1 = ent_raw_data[head_plus_1];
+                complete_pick_addr_1 = ent_addr[head_plus_1];
+            end
+            else begin
+                complete_pick_valid_2 = 1'b1;
+                complete_pick_idx_2 = head_plus_1;
+                complete_pick_rob_tag_2 = ent_rob_tag[head_plus_1];
+                complete_pick_prd_2 = ent_prd[head_plus_1];
+                complete_pick_funct3_2 = ent_funct3[head_plus_1];
+                complete_pick_raw_data_2 = ent_raw_data[head_plus_1];
+                complete_pick_addr_2 = ent_addr[head_plus_1];
             end
         end
     end
@@ -364,8 +435,22 @@ module load_queue (
             head_ptr   <= {`ROB_IDX_W{1'b0}};
             tail_ptr   <= {`ROB_IDX_W{1'b0}};
             used_count <= {(`ROB_IDX_W+1){1'b0}};
+            lq_o_complete_valid_1 <= 1'b0;
+            lq_o_complete_valid_2 <= 1'b0;
+            complete_idx_1 <= {`ROB_IDX_W{1'b0}};
+            complete_idx_2 <= {`ROB_IDX_W{1'b0}};
+            lq_o_complete_rob_tag_1 <= {`ROB_IDX_W{1'b0}};
+            lq_o_complete_rob_tag_2 <= {`ROB_IDX_W{1'b0}};
+            lq_o_complete_prd_1 <= {`RAT_SIZE{1'b0}};
+            lq_o_complete_prd_2 <= {`RAT_SIZE{1'b0}};
+            lq_o_complete_funct3_1 <= {`FUNCT3_WIDTH{1'b0}};
+            lq_o_complete_funct3_2 <= {`FUNCT3_WIDTH{1'b0}};
+            lq_o_complete_raw_data_1 <= {`DWIDTH{1'b0}};
+            lq_o_complete_raw_data_2 <= {`DWIDTH{1'b0}};
+            lq_o_complete_addr_1 <= {`DWIDTH{1'b0}};
+            lq_o_complete_addr_2 <= {`DWIDTH{1'b0}};
 
-            for (i = 0; i < `ROB_SIZE; i = i + 1) begin
+            for (i = 0; i < `LQ_SIZE; i = i + 1) begin
                 ent_valid[i] <= 1'b0;
                 ent_addr_valid[i] <= 1'b0;
                 ent_query_wait[i] <= 1'b0;
@@ -425,7 +510,7 @@ module load_queue (
                 ent_mem_wait[alloc2_ptr] <= 1'b0;
                 ent_done[alloc2_ptr] <= 1'b0;
                 ent_complete_sent[alloc2_ptr] <= 1'b0;
-ent_sq_tail_snapshot[alloc2_ptr] <= lq_i_alloc_sq_tail_snapshot_2;
+                ent_sq_tail_snapshot[alloc2_ptr] <= lq_i_alloc_sq_tail_snapshot_2;
                 ent_older_store_count[alloc2_ptr] <= lq_i_alloc_older_store_count_2;
                 ent_rob_tag[alloc2_ptr] <= {`ROB_IDX_W{1'b0}};
                 ent_prd[alloc2_ptr] <= {`RAT_SIZE{1'b0}};
@@ -489,8 +574,27 @@ ent_sq_tail_snapshot[alloc2_ptr] <= lq_i_alloc_sq_tail_snapshot_2;
                 ent_complete_sent[complete_idx_2] <= 1'b1;
             end
 
-            head_ptr   <= head_ptr + pop_n[`ROB_IDX_W-1:0];
-            tail_ptr   <= tail_ptr + push_n[`ROB_IDX_W-1:0];
+            if (!lq_o_complete_valid_1 || lq_i_complete_accept_1) begin
+                lq_o_complete_valid_1 <= complete_pick_valid_1;
+                complete_idx_1 <= complete_pick_idx_1;
+                lq_o_complete_rob_tag_1 <= complete_pick_rob_tag_1;
+                lq_o_complete_prd_1 <= complete_pick_prd_1;
+                lq_o_complete_funct3_1 <= complete_pick_funct3_1;
+                lq_o_complete_raw_data_1 <= complete_pick_raw_data_1;
+                lq_o_complete_addr_1 <= complete_pick_addr_1;
+            end
+            if (!lq_o_complete_valid_2 || lq_i_complete_accept_2) begin
+                lq_o_complete_valid_2 <= complete_pick_valid_2;
+                complete_idx_2 <= complete_pick_idx_2;
+                lq_o_complete_rob_tag_2 <= complete_pick_rob_tag_2;
+                lq_o_complete_prd_2 <= complete_pick_prd_2;
+                lq_o_complete_funct3_2 <= complete_pick_funct3_2;
+                lq_o_complete_raw_data_2 <= complete_pick_raw_data_2;
+                lq_o_complete_addr_2 <= complete_pick_addr_2;
+            end
+
+            head_ptr   <= lq_ptr_add_count(head_ptr, pop_n);
+            tail_ptr   <= lq_ptr_add_count(tail_ptr, push_n);
             used_count <= used_count + push_n - pop_n;
         end
     end

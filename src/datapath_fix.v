@@ -2029,7 +2029,14 @@ module datapath (
     input [`AWIDTH - 1 : 0] dp_i_arf_display_addr_1,
     output [`DWIDTH - 1 : 0] dp_o_arf_display_data_1,
     input [`AWIDTH - 1 : 0] dp_i_arf_display_addr_2,
-    output [`DWIDTH - 1 : 0] dp_o_arf_display_data_2
+    output [`DWIDTH - 1 : 0] dp_o_arf_display_data_2,
+
+    output dbg_commit_valid_1,
+    output [`AWIDTH - 1 : 0] dbg_commit_arch_rd_1,
+    output [`DWIDTH - 1 : 0] dbg_commit_data_1,
+    output dbg_commit_valid_2,
+    output [`AWIDTH - 1 : 0] dbg_commit_arch_rd_2,
+    output [`DWIDTH - 1 : 0] dbg_commit_data_2
 );
     integer prd_ready_i;
 
@@ -2121,15 +2128,15 @@ module datapath (
     // Front-end stalling is handled only by `fe_ce` (PC + IMEM enable).
     wire rs_o_can_alloc_1;
     wire rs_o_can_alloc_2;
-    wire [`RAT_SIZE-1:0] rs_dbg_entry_idx;
-    wire rs_dbg_ent_valid;
-    wire [`RAT_SIZE-1:0] rs_dbg_ent_prs;
-    wire [`RAT_SIZE-1:0] rs_dbg_ent_prt;
-    wire rs_dbg_ent_rs_ready;
-    wire rs_dbg_ent_rt_ready;
-    wire [`DWIDTH-1:0] rs_dbg_ent_vrs;
-    wire [`DWIDTH-1:0] rs_dbg_ent_vrt;
-    wire rs_dbg_ready_vec;
+    // wire [`RAT_SIZE-1:0] rs_dbg_entry_idx;
+    // wire rs_dbg_ent_valid;
+    // wire [`RAT_SIZE-1:0] rs_dbg_ent_prs;
+    // wire [`RAT_SIZE-1:0] rs_dbg_ent_prt;
+    // wire rs_dbg_ent_rs_ready;
+    // wire rs_dbg_ent_rt_ready;
+    // wire [`DWIDTH-1:0] rs_dbg_ent_vrs;
+    // wire [`DWIDTH-1:0] rs_dbg_ent_vrt;
+    // wire rs_dbg_ready_vec;
 
     imem u_imem (
         .im_i_ce(pc_im_o_ce),
@@ -2505,8 +2512,10 @@ module datapath (
     wire ds_store_2 = ds2_rs_o_ce && ds2_rs_o_memwrite;
     wire ds_branch_1 = ds1_rs_o_ce && ds1_rs_o_branch;
     wire ds_branch_2 = ds2_rs_o_ce && ds2_rs_o_branch;
-    wire ds_req_1 = ds_need_prd_1 || ds_store_1 || ds_branch_1;
-    wire ds_req_2 = ds_need_prd_2 || ds_store_2 || ds_branch_2;
+    wire ds_jal_req_1 = 1'b0;
+    wire ds_jal_req_2 = 1'b0;
+    wire ds_req_1 = ds_need_prd_1 || ds_store_1 || ds_branch_1 || ds_jal_req_1;
+    wire ds_req_2 = ds_need_prd_2 || ds_store_2 || ds_branch_2 || ds_jal_req_2;
 
     // Elastic Rename -> RS buffer accept:
     // - empty slot can always take a new rename packet
@@ -2664,12 +2673,12 @@ module datapath (
     reg [`DWIDTH - 1 : 0] ru_rs_data_rt_2;
     reg prd_ready [0 : (2**`RAT_SIZE) - 1];
     // Debug-only mirrors for waveform visibility. These do not drive datapath logic.
-    wire dbg_prd_ready_p12 = prd_ready[6'd12];
-    wire dbg_prd_ready_p43 = prd_ready[6'd43];
-    wire dbg_prd_ready_rs1_prs = prd_ready[ru_rs_prs_1];
-    wire dbg_prd_ready_rs1_prt = prd_ready[ru_rs_prt_1];
-    wire dbg_prd_ready_rs2_prs = prd_ready[ru_rs_prs_2];
-    wire dbg_prd_ready_rs2_prt = prd_ready[ru_rs_prt_2];
+    // wire dbg_prd_ready_p12 = prd_ready[6'd12];
+    // wire dbg_prd_ready_p43 = prd_ready[6'd43];
+    // wire dbg_prd_ready_rs1_prs = prd_ready[ru_rs_prs_1];
+    // wire dbg_prd_ready_rs1_prt = prd_ready[ru_rs_prt_1];
+    // wire dbg_prd_ready_rs2_prs = prd_ready[ru_rs_prs_2];
+    // wire dbg_prd_ready_rs2_prt = prd_ready[ru_rs_prt_2];
     // NOTE: We keep control/metadata inside RS entries (triệt để), so we don't need
 
     always @(posedge dp_clk or negedge dp_rstn) begin
@@ -2826,34 +2835,34 @@ module datapath (
                 // Otherwise the later RS allocation can see prd_ready=1 but
                 // still carry the stale PRF value captured at rename time.
                 if (ru_rs_valid_1 && !ru_rs_dispatch_fire_1) begin
-                    if (wb_valid_1 && (wb_tag_1 != {`RAT_SIZE{1'b0}})) begin
-                        if (ru_rs_prs_1 == wb_tag_1) ru_rs_data_rs_1 <= wb_data_1;
-                        if (ru_rs_prt_1 == wb_tag_1) ru_rs_data_rt_1 <= wb_data_1;
+                    if (wb_ru_valid_1_q && (wb_ru_tag_1_q != {`RAT_SIZE{1'b0}})) begin
+                        if (ru_rs_prs_1 == wb_ru_tag_1_q) ru_rs_data_rs_1 <= wb_ru_data_1_q;
+                        if (ru_rs_prt_1 == wb_ru_tag_1_q) ru_rs_data_rt_1 <= wb_ru_data_1_q;
                     end
-                    if (wb_valid_2 && (wb_tag_2 != {`RAT_SIZE{1'b0}})) begin
-                        if (ru_rs_prs_1 == wb_tag_2) ru_rs_data_rs_1 <= wb_data_2;
-                        if (ru_rs_prt_1 == wb_tag_2) ru_rs_data_rt_1 <= wb_data_2;
+                    if (wb_ru_valid_2_q && (wb_ru_tag_2_q != {`RAT_SIZE{1'b0}})) begin
+                        if (ru_rs_prs_1 == wb_ru_tag_2_q) ru_rs_data_rs_1 <= wb_ru_data_2_q;
+                        if (ru_rs_prt_1 == wb_ru_tag_2_q) ru_rs_data_rt_1 <= wb_ru_data_2_q;
                     end
                 end
                 if (ru_rs_valid_2 && !ru_rs_dispatch_fire_2) begin
-                    if (wb_valid_1 && (wb_tag_1 != {`RAT_SIZE{1'b0}})) begin
-                        if (ru_rs_prs_2 == wb_tag_1) ru_rs_data_rs_2 <= wb_data_1;
-                        if (ru_rs_prt_2 == wb_tag_1) ru_rs_data_rt_2 <= wb_data_1;
+                    if (wb_ru_valid_1_q && (wb_ru_tag_1_q != {`RAT_SIZE{1'b0}})) begin
+                        if (ru_rs_prs_2 == wb_ru_tag_1_q) ru_rs_data_rs_2 <= wb_ru_data_1_q;
+                        if (ru_rs_prt_2 == wb_ru_tag_1_q) ru_rs_data_rt_2 <= wb_ru_data_1_q;
                     end
-                    if (wb_valid_2 && (wb_tag_2 != {`RAT_SIZE{1'b0}})) begin
-                        if (ru_rs_prs_2 == wb_tag_2) ru_rs_data_rs_2 <= wb_data_2;
-                        if (ru_rs_prt_2 == wb_tag_2) ru_rs_data_rt_2 <= wb_data_2;
+                    if (wb_ru_valid_2_q && (wb_ru_tag_2_q != {`RAT_SIZE{1'b0}})) begin
+                        if (ru_rs_prs_2 == wb_ru_tag_2_q) ru_rs_data_rs_2 <= wb_ru_data_2_q;
+                        if (ru_rs_prt_2 == wb_ru_tag_2_q) ru_rs_data_rt_2 <= wb_ru_data_2_q;
                     end
                 end
 
                 // Scoreboard readiness cho PRD:
                 // - clear khi alloc producer moi
                 // - set khi WB xong (du lieu da co trong PRF de cycle sau doc an toan)
-                if (wb_valid_1) begin
-                    prd_ready[wb_tag_1] <= 1'b1;
+                if (wb_ru_valid_1_q) begin
+                    prd_ready[wb_ru_tag_1_q] <= 1'b1;
                 end
-                if (wb_valid_2) begin
-                    prd_ready[wb_tag_2] <= 1'b1;
+                if (wb_ru_valid_2_q) begin
+                    prd_ready[wb_ru_tag_2_q] <= 1'b1;
                 end
                 if (ren_fire_1 && ds_need_prd_1) begin
                     prd_ready[ru_o_new_prd_1] <= 1'b0;
@@ -2912,14 +2921,14 @@ module datapath (
     wire [`OPCODE_WIDTH - 1 : 0] rs_wakeup_es_opcode_1;
     wire [`OPCODE_WIDTH - 1 : 0] rs_wakeup_es_opcode_2;
 
-    wire rs_wakeup_mem_valid_1;
-    wire rs_wakeup_mem_valid_2;
-    wire [`RAT_SIZE - 1 : 0] rs_wakeup_mem_prd_1;
-    wire [`RAT_SIZE - 1 : 0] rs_wakeup_mem_prd_2;
-    wire [`DWIDTH - 1 : 0] rs_wakeup_mem_data_1;
-    wire [`DWIDTH - 1 : 0] rs_wakeup_mem_data_2;
-    wire [`OPCODE_WIDTH - 1 : 0] rs_wakeup_mem_opcode_1;
-    wire [`OPCODE_WIDTH - 1 : 0] rs_wakeup_mem_opcode_2;
+    reg rs_wakeup_mem_valid_1;
+    reg rs_wakeup_mem_valid_2;
+    reg [`RAT_SIZE - 1 : 0] rs_wakeup_mem_prd_1;
+    reg [`RAT_SIZE - 1 : 0] rs_wakeup_mem_prd_2;
+    reg [`DWIDTH - 1 : 0] rs_wakeup_mem_data_1;
+    reg [`DWIDTH - 1 : 0] rs_wakeup_mem_data_2;
+    reg [`OPCODE_WIDTH - 1 : 0] rs_wakeup_mem_opcode_1;
+    reg [`OPCODE_WIDTH - 1 : 0] rs_wakeup_mem_opcode_2;
 
     wire ru_rs_prs_ready_1 = (ru_rs_prs_1 == {`RAT_SIZE{1'b0}}) ? 1'b1 : prd_ready[ru_rs_prs_1];
     wire ru_rs_prt_ready_1 = (ru_rs_prt_1 == {`RAT_SIZE{1'b0}}) ? 1'b1 : prd_ready[ru_rs_prt_1];
@@ -2983,8 +2992,8 @@ module datapath (
     wire sq_need_2 = rs_alloc_valid_2 & ru_rs_memwrite_2;
     wire lq_need_1 = rs_alloc_valid_1 & ru_rs_memtoreg_1;
     wire lq_need_2 = rs_alloc_valid_2 & ru_rs_memtoreg_2;
-    wire [`ROB_IDX_W : 0] sq_free_count = `ROB_SIZE - sq_o_count;
-    wire [`ROB_IDX_W : 0] lq_free_count = `ROB_SIZE - lq_o_count;
+    wire [`ROB_IDX_W : 0] sq_free_count = `SQ_SIZE - sq_o_count;
+    wire [`ROB_IDX_W : 0] lq_free_count = `LQ_SIZE - lq_o_count;
     wire [`ROB_IDX_W : 0] sq_need_pair =
         {{`ROB_IDX_W{1'b0}}, sq_need_1} + {{`ROB_IDX_W{1'b0}}, sq_need_2};
     wire [`ROB_IDX_W : 0] lq_need_pair =
@@ -3562,6 +3571,24 @@ module datapath (
     wire [`ROB_IDX_W - 1 : 0] lq_o_sq_query_tail_snapshot_2;
     wire [`ROB_IDX_W : 0] lq_o_sq_query_older_store_count_1;
     wire [`ROB_IDX_W : 0] lq_o_sq_query_older_store_count_2;
+
+    reg lq_sq_query_valid_1_q;
+    reg lq_sq_query_valid_2_q;
+    reg [`ROB_IDX_W - 1 : 0] lq_sq_query_ptr_1_q;
+    reg [`ROB_IDX_W - 1 : 0] lq_sq_query_ptr_2_q;
+    reg [`DWIDTH - 1 : 0] lq_sq_query_addr_1_q;
+    reg [`DWIDTH - 1 : 0] lq_sq_query_addr_2_q;
+    reg [3 : 0] lq_sq_query_mask_1_q;
+    reg [3 : 0] lq_sq_query_mask_2_q;
+    reg [`ROB_IDX_W - 1 : 0] lq_sq_query_tail_snapshot_1_q;
+    reg [`ROB_IDX_W - 1 : 0] lq_sq_query_tail_snapshot_2_q;
+    reg [`ROB_IDX_W : 0] lq_sq_query_older_store_count_1_q;
+    reg [`ROB_IDX_W : 0] lq_sq_query_older_store_count_2_q;
+    reg sq_commit_valid_1_q;
+    reg sq_commit_valid_2_q;
+    reg [`ROB_IDX_W - 1 : 0] sq_commit_ptr_1_q;
+    reg [`ROB_IDX_W - 1 : 0] sq_commit_ptr_2_q;
+
     wire sq_o_load_resp_valid_1;
     wire sq_o_load_resp_valid_2;
     wire [`ROB_IDX_W - 1 : 0] sq_o_load_resp_ptr_1;
@@ -3575,18 +3602,37 @@ module datapath (
     wire [`DWIDTH - 1 : 0] sq_o_load_resp_forward_data_1;
     wire [`DWIDTH - 1 : 0] sq_o_load_resp_forward_data_2;
 
+    reg lq_i_sq_resp_valid_1;
+    reg lq_i_sq_resp_valid_2;
+    reg [`ROB_IDX_W - 1 : 0] lq_i_sq_resp_ptr_1;
+    reg [`ROB_IDX_W - 1 : 0] lq_i_sq_resp_ptr_2;
+    reg lq_i_sq_resp_read_mem_1;
+    reg lq_i_sq_resp_read_mem_2;
+    reg lq_i_sq_resp_forward_valid_1;
+    reg lq_i_sq_resp_forward_valid_2;
+    reg lq_i_sq_resp_wait_1;
+    reg lq_i_sq_resp_wait_2;
+    reg [`DWIDTH - 1 : 0] lq_i_sq_resp_forward_data_1;
+    reg [`DWIDTH - 1 : 0] lq_i_sq_resp_forward_data_2;
+
     wire lq_o_mem_req_valid_1;
     wire lq_o_mem_req_valid_2;
     wire [`ROB_IDX_W - 1 : 0] lq_o_mem_req_ptr_1;
     wire [`ROB_IDX_W - 1 : 0] lq_o_mem_req_ptr_2;
     wire [`DWIDTH - 1 : 0] lq_o_mem_req_addr_1;
     wire [`DWIDTH - 1 : 0] lq_o_mem_req_addr_2;
-    wire lq_i_mem_resp_valid_1;
-    wire lq_i_mem_resp_valid_2;
-    wire [`ROB_IDX_W - 1 : 0] lq_i_mem_resp_ptr_1;
-    wire [`ROB_IDX_W - 1 : 0] lq_i_mem_resp_ptr_2;
-    wire [`DWIDTH - 1 : 0] lq_i_mem_resp_data_1;
-    wire [`DWIDTH - 1 : 0] lq_i_mem_resp_data_2;
+    reg lq_i_mem_resp_valid_1;
+    reg lq_i_mem_resp_valid_2;
+    reg [`ROB_IDX_W - 1 : 0] lq_i_mem_resp_ptr_1;
+    reg [`ROB_IDX_W - 1 : 0] lq_i_mem_resp_ptr_2;
+    reg [`DWIDTH - 1 : 0] lq_i_mem_resp_data_1;
+    reg [`DWIDTH - 1 : 0] lq_i_mem_resp_data_2;
+    reg lq_mem_req_valid_1_q;
+    reg lq_mem_req_valid_2_q;
+    reg [`ROB_IDX_W - 1 : 0] lq_mem_req_ptr_1_q;
+    reg [`ROB_IDX_W - 1 : 0] lq_mem_req_ptr_2_q;
+    reg [`DWIDTH - 1 : 0] lq_mem_req_addr_1_q;
+    reg [`DWIDTH - 1 : 0] lq_mem_req_addr_2_q;
 
     wire lq_i_complete_accept_1;
     wire lq_i_complete_accept_2;
@@ -3616,6 +3662,65 @@ module datapath (
     reg [`DWIDTH - 1 : 0] lq_mwb_complete_addr_1;
     reg [`DWIDTH - 1 : 0] lq_mwb_complete_addr_2;
 
+    // Pipeline LSU control before SQ. This cuts long LQ/ROB control paths into
+    // the Store Queue without changing ROB commit timing.
+    always @(posedge dp_clk or negedge dp_rstn) begin
+        if (!dp_rstn) begin
+            lq_sq_query_valid_1_q <= 1'b0;
+            lq_sq_query_valid_2_q <= 1'b0;
+            lq_sq_query_ptr_1_q <= {`ROB_IDX_W{1'b0}};
+            lq_sq_query_ptr_2_q <= {`ROB_IDX_W{1'b0}};
+            lq_sq_query_addr_1_q <= {`DWIDTH{1'b0}};
+            lq_sq_query_addr_2_q <= {`DWIDTH{1'b0}};
+            lq_sq_query_mask_1_q <= 4'b0;
+            lq_sq_query_mask_2_q <= 4'b0;
+            lq_sq_query_tail_snapshot_1_q <= {`ROB_IDX_W{1'b0}};
+            lq_sq_query_tail_snapshot_2_q <= {`ROB_IDX_W{1'b0}};
+            lq_sq_query_older_store_count_1_q <= {(`ROB_IDX_W + 1){1'b0}};
+            lq_sq_query_older_store_count_2_q <= {(`ROB_IDX_W + 1){1'b0}};
+            sq_commit_valid_1_q <= 1'b0;
+            sq_commit_valid_2_q <= 1'b0;
+            sq_commit_ptr_1_q <= {`ROB_IDX_W{1'b0}};
+            sq_commit_ptr_2_q <= {`ROB_IDX_W{1'b0}};
+        end
+        else if (es_backend_flush) begin
+            lq_sq_query_valid_1_q <= 1'b0;
+            lq_sq_query_valid_2_q <= 1'b0;
+            lq_sq_query_ptr_1_q <= {`ROB_IDX_W{1'b0}};
+            lq_sq_query_ptr_2_q <= {`ROB_IDX_W{1'b0}};
+            lq_sq_query_addr_1_q <= {`DWIDTH{1'b0}};
+            lq_sq_query_addr_2_q <= {`DWIDTH{1'b0}};
+            lq_sq_query_mask_1_q <= 4'b0;
+            lq_sq_query_mask_2_q <= 4'b0;
+            lq_sq_query_tail_snapshot_1_q <= {`ROB_IDX_W{1'b0}};
+            lq_sq_query_tail_snapshot_2_q <= {`ROB_IDX_W{1'b0}};
+            lq_sq_query_older_store_count_1_q <= {(`ROB_IDX_W + 1){1'b0}};
+            lq_sq_query_older_store_count_2_q <= {(`ROB_IDX_W + 1){1'b0}};
+            sq_commit_valid_1_q <= 1'b0;
+            sq_commit_valid_2_q <= 1'b0;
+            sq_commit_ptr_1_q <= {`ROB_IDX_W{1'b0}};
+            sq_commit_ptr_2_q <= {`ROB_IDX_W{1'b0}};
+        end
+        else begin
+            lq_sq_query_valid_1_q <= lq_o_sq_query_valid_1;
+            lq_sq_query_valid_2_q <= lq_o_sq_query_valid_2;
+            lq_sq_query_ptr_1_q <= lq_o_sq_query_ptr_1;
+            lq_sq_query_ptr_2_q <= lq_o_sq_query_ptr_2;
+            lq_sq_query_addr_1_q <= lq_o_sq_query_addr_1;
+            lq_sq_query_addr_2_q <= lq_o_sq_query_addr_2;
+            lq_sq_query_mask_1_q <= lq_o_sq_query_mask_1;
+            lq_sq_query_mask_2_q <= lq_o_sq_query_mask_2;
+            lq_sq_query_tail_snapshot_1_q <= lq_o_sq_query_tail_snapshot_1;
+            lq_sq_query_tail_snapshot_2_q <= lq_o_sq_query_tail_snapshot_2;
+            lq_sq_query_older_store_count_1_q <= lq_o_sq_query_older_store_count_1;
+            lq_sq_query_older_store_count_2_q <= lq_o_sq_query_older_store_count_2;
+            sq_commit_valid_1_q <= rob_o_commit_valid_1 && rob_o_commit_is_store_1;
+            sq_commit_valid_2_q <= rob_o_commit_valid_2 && rob_o_commit_is_store_2;
+            sq_commit_ptr_1_q <= rob_o_commit_sq_idx_1;
+            sq_commit_ptr_2_q <= rob_o_commit_sq_idx_2;
+        end
+    end
+
     store_queue u_store_queue (
         .sq_clk(dp_clk),
         .sq_rstn(dp_rstn),
@@ -3637,10 +3742,10 @@ module datapath (
         .sq_i_fill_data_2(exm_store_data_2),
         .sq_i_fill_mask_2(exm_store_mask_2),
 
-        .sq_i_commit_valid_1(rob_o_commit_valid_1 && rob_o_commit_is_store_1),
-        .sq_i_commit_ptr_1(rob_o_commit_sq_idx_1),
-        .sq_i_commit_valid_2(rob_o_commit_valid_2 && rob_o_commit_is_store_2),
-        .sq_i_commit_ptr_2(rob_o_commit_sq_idx_2),
+        .sq_i_commit_valid_1(sq_commit_valid_1_q),
+        .sq_i_commit_ptr_1(sq_commit_ptr_1_q),
+        .sq_i_commit_valid_2(sq_commit_valid_2_q),
+        .sq_i_commit_ptr_2(sq_commit_ptr_2_q),
 
         .sq_o_mem_ce_1(sq_o_mem_ce_1),
         .sq_o_mem_wr_en_1(sq_o_mem_wr_en_1),
@@ -3653,24 +3758,24 @@ module datapath (
         .sq_o_mem_data_2(sq_o_mem_data_2),
         .sq_o_mem_mask_2(sq_o_mem_mask_2),
 
-        .sq_i_load_query_valid_1(lq_o_sq_query_valid_1),
-        .sq_i_load_query_ptr_1(lq_o_sq_query_ptr_1),
-        .sq_i_load_query_addr_1(lq_o_sq_query_addr_1),
-        .sq_i_load_query_mask_1(lq_o_sq_query_mask_1),
-        .sq_i_load_query_tail_snapshot_1(lq_o_sq_query_tail_snapshot_1),
-        .sq_i_load_query_older_store_count_1(lq_o_sq_query_older_store_count_1),
+        .sq_i_load_query_valid_1(lq_sq_query_valid_1_q),
+        .sq_i_load_query_ptr_1(lq_sq_query_ptr_1_q),
+        .sq_i_load_query_addr_1(lq_sq_query_addr_1_q),
+        .sq_i_load_query_mask_1(lq_sq_query_mask_1_q),
+        .sq_i_load_query_tail_snapshot_1(lq_sq_query_tail_snapshot_1_q),
+        .sq_i_load_query_older_store_count_1(lq_sq_query_older_store_count_1_q),
         .sq_o_load_resp_valid_1(sq_o_load_resp_valid_1),
         .sq_o_load_resp_ptr_1(sq_o_load_resp_ptr_1),
         .sq_o_load_resp_read_mem_1(sq_o_load_resp_read_mem_1),
         .sq_o_load_resp_forward_valid_1(sq_o_load_resp_forward_valid_1),
         .sq_o_load_resp_wait_1(sq_o_load_resp_wait_1),
         .sq_o_load_resp_forward_data_1(sq_o_load_resp_forward_data_1),
-        .sq_i_load_query_valid_2(lq_o_sq_query_valid_2),
-        .sq_i_load_query_ptr_2(lq_o_sq_query_ptr_2),
-        .sq_i_load_query_addr_2(lq_o_sq_query_addr_2),
-        .sq_i_load_query_mask_2(lq_o_sq_query_mask_2),
-        .sq_i_load_query_tail_snapshot_2(lq_o_sq_query_tail_snapshot_2),
-        .sq_i_load_query_older_store_count_2(lq_o_sq_query_older_store_count_2),
+        .sq_i_load_query_valid_2(lq_sq_query_valid_2_q),
+        .sq_i_load_query_ptr_2(lq_sq_query_ptr_2_q),
+        .sq_i_load_query_addr_2(lq_sq_query_addr_2_q),
+        .sq_i_load_query_mask_2(lq_sq_query_mask_2_q),
+        .sq_i_load_query_tail_snapshot_2(lq_sq_query_tail_snapshot_2_q),
+        .sq_i_load_query_older_store_count_2(lq_sq_query_older_store_count_2_q),
         .sq_o_load_resp_valid_2(sq_o_load_resp_valid_2),
         .sq_o_load_resp_ptr_2(sq_o_load_resp_ptr_2),
         .sq_o_load_resp_read_mem_2(sq_o_load_resp_read_mem_2),
@@ -3681,6 +3786,53 @@ module datapath (
         .sq_o_count(sq_o_count),
         .sq_o_tail_ptr(sq_o_tail_ptr)
     );
+
+    // Register SQ responses before feeding them back into LQ. This breaks the
+    // same-cycle LQ query -> SQ search/forward -> LQ writeback path.
+    always @(posedge dp_clk or negedge dp_rstn) begin
+        if (!dp_rstn) begin
+            lq_i_sq_resp_valid_1 <= 1'b0;
+            lq_i_sq_resp_valid_2 <= 1'b0;
+            lq_i_sq_resp_ptr_1 <= {`ROB_IDX_W{1'b0}};
+            lq_i_sq_resp_ptr_2 <= {`ROB_IDX_W{1'b0}};
+            lq_i_sq_resp_read_mem_1 <= 1'b0;
+            lq_i_sq_resp_read_mem_2 <= 1'b0;
+            lq_i_sq_resp_forward_valid_1 <= 1'b0;
+            lq_i_sq_resp_forward_valid_2 <= 1'b0;
+            lq_i_sq_resp_wait_1 <= 1'b0;
+            lq_i_sq_resp_wait_2 <= 1'b0;
+            lq_i_sq_resp_forward_data_1 <= {`DWIDTH{1'b0}};
+            lq_i_sq_resp_forward_data_2 <= {`DWIDTH{1'b0}};
+        end
+        else if (es_backend_flush) begin
+            lq_i_sq_resp_valid_1 <= 1'b0;
+            lq_i_sq_resp_valid_2 <= 1'b0;
+            lq_i_sq_resp_ptr_1 <= {`ROB_IDX_W{1'b0}};
+            lq_i_sq_resp_ptr_2 <= {`ROB_IDX_W{1'b0}};
+            lq_i_sq_resp_read_mem_1 <= 1'b0;
+            lq_i_sq_resp_read_mem_2 <= 1'b0;
+            lq_i_sq_resp_forward_valid_1 <= 1'b0;
+            lq_i_sq_resp_forward_valid_2 <= 1'b0;
+            lq_i_sq_resp_wait_1 <= 1'b0;
+            lq_i_sq_resp_wait_2 <= 1'b0;
+            lq_i_sq_resp_forward_data_1 <= {`DWIDTH{1'b0}};
+            lq_i_sq_resp_forward_data_2 <= {`DWIDTH{1'b0}};
+        end
+        else begin
+            lq_i_sq_resp_valid_1 <= sq_o_load_resp_valid_1;
+            lq_i_sq_resp_valid_2 <= sq_o_load_resp_valid_2;
+            lq_i_sq_resp_ptr_1 <= sq_o_load_resp_ptr_1;
+            lq_i_sq_resp_ptr_2 <= sq_o_load_resp_ptr_2;
+            lq_i_sq_resp_read_mem_1 <= sq_o_load_resp_read_mem_1;
+            lq_i_sq_resp_read_mem_2 <= sq_o_load_resp_read_mem_2;
+            lq_i_sq_resp_forward_valid_1 <= sq_o_load_resp_forward_valid_1;
+            lq_i_sq_resp_forward_valid_2 <= sq_o_load_resp_forward_valid_2;
+            lq_i_sq_resp_wait_1 <= sq_o_load_resp_wait_1;
+            lq_i_sq_resp_wait_2 <= sq_o_load_resp_wait_2;
+            lq_i_sq_resp_forward_data_1 <= sq_o_load_resp_forward_data_1;
+            lq_i_sq_resp_forward_data_2 <= sq_o_load_resp_forward_data_2;
+        end
+    end
 
     load_queue u_load_queue (
         .lq_clk(dp_clk),
@@ -3722,18 +3874,18 @@ module datapath (
         .lq_o_sq_query_tail_snapshot_2(lq_o_sq_query_tail_snapshot_2),
         .lq_o_sq_query_older_store_count_2(lq_o_sq_query_older_store_count_2),
 
-        .lq_i_sq_resp_valid_1(sq_o_load_resp_valid_1),
-        .lq_i_sq_resp_ptr_1(sq_o_load_resp_ptr_1),
-        .lq_i_sq_resp_read_mem_1(sq_o_load_resp_read_mem_1),
-        .lq_i_sq_resp_forward_valid_1(sq_o_load_resp_forward_valid_1),
-        .lq_i_sq_resp_wait_1(sq_o_load_resp_wait_1),
-        .lq_i_sq_resp_forward_data_1(sq_o_load_resp_forward_data_1),
-        .lq_i_sq_resp_valid_2(sq_o_load_resp_valid_2),
-        .lq_i_sq_resp_ptr_2(sq_o_load_resp_ptr_2),
-        .lq_i_sq_resp_read_mem_2(sq_o_load_resp_read_mem_2),
-        .lq_i_sq_resp_forward_valid_2(sq_o_load_resp_forward_valid_2),
-        .lq_i_sq_resp_wait_2(sq_o_load_resp_wait_2),
-        .lq_i_sq_resp_forward_data_2(sq_o_load_resp_forward_data_2),
+        .lq_i_sq_resp_valid_1(lq_i_sq_resp_valid_1),
+        .lq_i_sq_resp_ptr_1(lq_i_sq_resp_ptr_1),
+        .lq_i_sq_resp_read_mem_1(lq_i_sq_resp_read_mem_1),
+        .lq_i_sq_resp_forward_valid_1(lq_i_sq_resp_forward_valid_1),
+        .lq_i_sq_resp_wait_1(lq_i_sq_resp_wait_1),
+        .lq_i_sq_resp_forward_data_1(lq_i_sq_resp_forward_data_1),
+        .lq_i_sq_resp_valid_2(lq_i_sq_resp_valid_2),
+        .lq_i_sq_resp_ptr_2(lq_i_sq_resp_ptr_2),
+        .lq_i_sq_resp_read_mem_2(lq_i_sq_resp_read_mem_2),
+        .lq_i_sq_resp_forward_valid_2(lq_i_sq_resp_forward_valid_2),
+        .lq_i_sq_resp_wait_2(lq_i_sq_resp_wait_2),
+        .lq_i_sq_resp_forward_data_2(lq_i_sq_resp_forward_data_2),
 
         .lq_o_mem_req_valid_1(lq_o_mem_req_valid_1),
         .lq_o_mem_req_ptr_1(lq_o_mem_req_ptr_1),
@@ -3770,68 +3922,91 @@ module datapath (
 
         .lq_o_count(lq_o_count)
     );
-    wire lq_mem_req_fire_1 = lq_o_mem_req_valid_1 && !sq_o_mem_ce_1;
-    wire lq_mem_req_fire_2 = lq_o_mem_req_valid_2 && !sq_o_mem_ce_2;
-    assign lq_i_mem_resp_valid_1 = lq_mem_req_fire_1;
-    assign lq_i_mem_resp_valid_2 = lq_mem_req_fire_2;
-    assign lq_i_mem_resp_ptr_1 = lq_o_mem_req_ptr_1;
-    assign lq_i_mem_resp_ptr_2 = lq_o_mem_req_ptr_2;
+    wire lq1_same_word_commit_store =
+        lq_o_mem_req_valid_1 &&
+        ((sq_o_mem_ce_1 && sq_o_mem_wr_en_1 &&
+          (sq_o_mem_addr_1[`DWIDTH-1:2] == lq_o_mem_req_addr_1[`DWIDTH-1:2])) ||
+         (sq_o_mem_ce_2 && sq_o_mem_wr_en_2 &&
+          (sq_o_mem_addr_2[`DWIDTH-1:2] == lq_o_mem_req_addr_1[`DWIDTH-1:2])));
+    wire lq2_same_word_commit_store =
+        lq_o_mem_req_valid_2 &&
+        ((sq_o_mem_ce_1 && sq_o_mem_wr_en_1 &&
+          (sq_o_mem_addr_1[`DWIDTH-1:2] == lq_o_mem_req_addr_2[`DWIDTH-1:2])) ||
+         (sq_o_mem_ce_2 && sq_o_mem_wr_en_2 &&
+          (sq_o_mem_addr_2[`DWIDTH-1:2] == lq_o_mem_req_addr_2[`DWIDTH-1:2])));
 
-    function [`DWIDTH-1:0] merge_store_word;
-        input [`DWIDTH-1:0] base_word;
-        input [`DWIDTH-1:0] store_word;
-        input [3:0] store_mask;
-        begin
-            merge_store_word = base_word;
-            if (store_mask[0]) merge_store_word[7:0]   = store_word[7:0];
-            if (store_mask[1]) merge_store_word[15:8]  = store_word[15:8];
-            if (store_mask[2]) merge_store_word[23:16] = store_word[23:16];
-            if (store_mask[3]) merge_store_word[31:24] = store_word[31:24];
+    wire lq_mem_req_fire_1 =
+        lq_o_mem_req_valid_1 && !sq_o_mem_ce_1 && !lq1_same_word_commit_store;
+    wire lq_mem_req_fire_2 =
+        lq_o_mem_req_valid_2 && !sq_o_mem_ce_2 && !lq2_same_word_commit_store;
+    wire lq_mem_req_take_1 = lq_mem_req_valid_1_q && !sq_o_mem_ce_1;
+    wire lq_mem_req_take_2 = lq_mem_req_valid_2_q && !sq_o_mem_ce_2;
+
+    // Register memory responses before feeding them back into LQ. This breaks
+    // the same-cycle LQ request -> memory/merge -> LQ writeback timing path.
+    always @(posedge dp_clk or negedge dp_rstn) begin
+        if (!dp_rstn) begin
+            lq_i_mem_resp_valid_1 <= 1'b0;
+            lq_i_mem_resp_valid_2 <= 1'b0;
+            lq_i_mem_resp_ptr_1 <= {`ROB_IDX_W{1'b0}};
+            lq_i_mem_resp_ptr_2 <= {`ROB_IDX_W{1'b0}};
+            lq_i_mem_resp_data_1 <= {`DWIDTH{1'b0}};
+            lq_i_mem_resp_data_2 <= {`DWIDTH{1'b0}};
+            lq_mem_req_valid_1_q <= 1'b0;
+            lq_mem_req_valid_2_q <= 1'b0;
+            lq_mem_req_ptr_1_q <= {`ROB_IDX_W{1'b0}};
+            lq_mem_req_ptr_2_q <= {`ROB_IDX_W{1'b0}};
+            lq_mem_req_addr_1_q <= {`DWIDTH{1'b0}};
+            lq_mem_req_addr_2_q <= {`DWIDTH{1'b0}};
         end
-    endfunction
+        else if (es_backend_flush) begin
+            lq_i_mem_resp_valid_1 <= 1'b0;
+            lq_i_mem_resp_valid_2 <= 1'b0;
+            lq_i_mem_resp_ptr_1 <= {`ROB_IDX_W{1'b0}};
+            lq_i_mem_resp_ptr_2 <= {`ROB_IDX_W{1'b0}};
+            lq_i_mem_resp_data_1 <= {`DWIDTH{1'b0}};
+            lq_i_mem_resp_data_2 <= {`DWIDTH{1'b0}};
+            lq_mem_req_valid_1_q <= 1'b0;
+            lq_mem_req_valid_2_q <= 1'b0;
+            lq_mem_req_ptr_1_q <= {`ROB_IDX_W{1'b0}};
+            lq_mem_req_ptr_2_q <= {`ROB_IDX_W{1'b0}};
+            lq_mem_req_addr_1_q <= {`DWIDTH{1'b0}};
+            lq_mem_req_addr_2_q <= {`DWIDTH{1'b0}};
+        end
+        else begin
+            lq_i_mem_resp_valid_1 <= lq_mem_req_take_1;
+            lq_i_mem_resp_valid_2 <= lq_mem_req_take_2;
+            lq_i_mem_resp_ptr_1 <= lq_mem_req_ptr_1_q;
+            lq_i_mem_resp_ptr_2 <= lq_mem_req_ptr_2_q;
+            lq_i_mem_resp_data_1 <= m_o_load_data_1;
+            lq_i_mem_resp_data_2 <= m_o_load_data_2;
 
-    wire lq1_same_word_sq1 =
-        sq_o_mem_ce_1 && sq_o_mem_wr_en_1 &&
-        (sq_o_mem_addr_1[`DWIDTH-1:2] == lq_o_mem_req_addr_1[`DWIDTH-1:2]);
-    wire lq1_same_word_sq2 =
-        sq_o_mem_ce_2 && sq_o_mem_wr_en_2 &&
-        (sq_o_mem_addr_2[`DWIDTH-1:2] == lq_o_mem_req_addr_1[`DWIDTH-1:2]);
-    wire lq2_same_word_sq1 =
-        sq_o_mem_ce_1 && sq_o_mem_wr_en_1 &&
-        (sq_o_mem_addr_1[`DWIDTH-1:2] == lq_o_mem_req_addr_2[`DWIDTH-1:2]);
-    wire lq2_same_word_sq2 =
-        sq_o_mem_ce_2 && sq_o_mem_wr_en_2 &&
-        (sq_o_mem_addr_2[`DWIDTH-1:2] == lq_o_mem_req_addr_2[`DWIDTH-1:2]);
+            if (lq_mem_req_take_1 || !lq_mem_req_valid_1_q) begin
+                lq_mem_req_valid_1_q <= lq_mem_req_fire_1;
+                lq_mem_req_ptr_1_q <= lq_o_mem_req_ptr_1;
+                lq_mem_req_addr_1_q <= lq_o_mem_req_addr_1;
+            end
+            if (lq_mem_req_take_2 || !lq_mem_req_valid_2_q) begin
+                lq_mem_req_valid_2_q <= lq_mem_req_fire_2;
+                lq_mem_req_ptr_2_q <= lq_o_mem_req_ptr_2;
+                lq_mem_req_addr_2_q <= lq_o_mem_req_addr_2;
+            end
+        end
+    end
 
-    wire [`DWIDTH-1:0] lq_mem_resp_data_1_after_sq1 =
-        lq1_same_word_sq1 ? merge_store_word(m_o_load_data_1, sq_o_mem_data_1, sq_o_mem_mask_1) :
-                            m_o_load_data_1;
-    wire [`DWIDTH-1:0] lq_mem_resp_data_1_merged =
-        lq1_same_word_sq2 ? merge_store_word(lq_mem_resp_data_1_after_sq1, sq_o_mem_data_2, sq_o_mem_mask_2) :
-                            lq_mem_resp_data_1_after_sq1;
-    wire [`DWIDTH-1:0] lq_mem_resp_data_2_after_sq1 =
-        lq2_same_word_sq1 ? merge_store_word(m_o_load_data_2, sq_o_mem_data_1, sq_o_mem_mask_1) :
-                            m_o_load_data_2;
-    wire [`DWIDTH-1:0] lq_mem_resp_data_2_merged =
-        lq2_same_word_sq2 ? merge_store_word(lq_mem_resp_data_2_after_sq1, sq_o_mem_data_2, sq_o_mem_mask_2) :
-                            lq_mem_resp_data_2_after_sq1;
-
-    assign lq_i_mem_resp_data_1 = lq_mem_resp_data_1_merged;
-    assign lq_i_mem_resp_data_2 = lq_mem_resp_data_2_merged;
-
-    wire mem_i_ce_1 = sq_o_mem_ce_1 || lq_mem_req_fire_1;
+    wire mem_i_ce_1 = sq_o_mem_ce_1 || lq_mem_req_valid_1_q;
     wire mem_i_wr_en_1 = sq_o_mem_wr_en_1;
     wire [`DWIDTH - 1 : 0] mem_i_addr_1 =
-        sq_o_mem_ce_1 ? sq_o_mem_addr_1 : lq_o_mem_req_addr_1;
+        sq_o_mem_ce_1 ? sq_o_mem_addr_1 : lq_mem_req_addr_1_q;
     wire [`DWIDTH - 1 : 0] mem_i_store_data_1 =
         sq_o_mem_ce_1 ? sq_o_mem_data_1 : {`DWIDTH{1'b0}};
     wire [3 : 0] mem_i_store_mask_1 =
         sq_o_mem_ce_1 ? sq_o_mem_mask_1 : 4'b0;
 
-    wire mem_i_ce_2 = sq_o_mem_ce_2 || lq_mem_req_fire_2;
+    wire mem_i_ce_2 = sq_o_mem_ce_2 || lq_mem_req_valid_2_q;
     wire mem_i_wr_en_2 = sq_o_mem_wr_en_2;
     wire [`DWIDTH - 1 : 0] mem_i_addr_2 =
-        sq_o_mem_ce_2 ? sq_o_mem_addr_2 : lq_o_mem_req_addr_2;
+        sq_o_mem_ce_2 ? sq_o_mem_addr_2 : lq_mem_req_addr_2_q;
     wire [`DWIDTH - 1 : 0] mem_i_store_data_2 =
         sq_o_mem_ce_2 ? sq_o_mem_data_2 : {`DWIDTH{1'b0}};
     wire [3 : 0] mem_i_store_mask_2 =
@@ -4054,18 +4229,43 @@ module datapath (
     assign dp_o_data_1 = cpl_data_1;
     assign dp_o_data_2 = cpl_data_2;
 
-    // Completion wakeup is the later fallback path. LOAD data arrives here after
-    // Load Queue/treat_load, while ALU/MUL/DIV may also repeat here harmlessly.
-    assign rs_wakeup_mem_valid_1 = cpl_valid_1 && cpl_regwrite_1 &&
-                                   (cpl_prd_1 != {`RAT_SIZE{1'b0}});
-    assign rs_wakeup_mem_valid_2 = cpl_valid_2 && cpl_regwrite_2 &&
-                                   (cpl_prd_2 != {`RAT_SIZE{1'b0}});
-    assign rs_wakeup_mem_prd_1 = cpl_prd_1;
-    assign rs_wakeup_mem_prd_2 = cpl_prd_2;
-    assign rs_wakeup_mem_data_1 = cpl_data_1;
-    assign rs_wakeup_mem_data_2 = cpl_data_2;
-    assign rs_wakeup_mem_opcode_1 = cpl_opcode_1;
-    assign rs_wakeup_mem_opcode_2 = cpl_opcode_2;
+    // Registered completion wakeup for RS.
+    // ROB complete and PRF WB still use cpl_* in this cycle; only the RS
+    // fallback wakeup path is delayed to match the registered ALU wakeup style.
+    always @(posedge dp_clk or negedge dp_rstn) begin
+        if (!dp_rstn) begin
+            rs_wakeup_mem_valid_1 <= 1'b0;
+            rs_wakeup_mem_valid_2 <= 1'b0;
+            rs_wakeup_mem_prd_1 <= {`RAT_SIZE{1'b0}};
+            rs_wakeup_mem_prd_2 <= {`RAT_SIZE{1'b0}};
+            rs_wakeup_mem_data_1 <= {`DWIDTH{1'b0}};
+            rs_wakeup_mem_data_2 <= {`DWIDTH{1'b0}};
+            rs_wakeup_mem_opcode_1 <= {`OPCODE_WIDTH{1'b0}};
+            rs_wakeup_mem_opcode_2 <= {`OPCODE_WIDTH{1'b0}};
+        end
+        else if (es_backend_flush) begin
+            rs_wakeup_mem_valid_1 <= 1'b0;
+            rs_wakeup_mem_valid_2 <= 1'b0;
+            rs_wakeup_mem_prd_1 <= {`RAT_SIZE{1'b0}};
+            rs_wakeup_mem_prd_2 <= {`RAT_SIZE{1'b0}};
+            rs_wakeup_mem_data_1 <= {`DWIDTH{1'b0}};
+            rs_wakeup_mem_data_2 <= {`DWIDTH{1'b0}};
+            rs_wakeup_mem_opcode_1 <= {`OPCODE_WIDTH{1'b0}};
+            rs_wakeup_mem_opcode_2 <= {`OPCODE_WIDTH{1'b0}};
+        end
+        else begin
+            rs_wakeup_mem_valid_1 <= cpl_valid_1 && cpl_regwrite_1 &&
+                                     (cpl_prd_1 != {`RAT_SIZE{1'b0}});
+            rs_wakeup_mem_valid_2 <= cpl_valid_2 && cpl_regwrite_2 &&
+                                     (cpl_prd_2 != {`RAT_SIZE{1'b0}});
+            rs_wakeup_mem_prd_1 <= cpl_prd_1;
+            rs_wakeup_mem_prd_2 <= cpl_prd_2;
+            rs_wakeup_mem_data_1 <= cpl_data_1;
+            rs_wakeup_mem_data_2 <= cpl_data_2;
+            rs_wakeup_mem_opcode_1 <= cpl_opcode_1;
+            rs_wakeup_mem_opcode_2 <= cpl_opcode_2;
+        end
+    end
 
     // -------------------------------------------------------------------------
     // Stage 6: ROB + Commit (ảo)
@@ -4092,9 +4292,6 @@ module datapath (
 		.rob_i_alloc_sq_idx_1(dispatch_sq_idx_1),
 		.rob_i_alloc_is_load_1(ru_rs_memtoreg_1),
 		.rob_i_alloc_ld_idx_1(dispatch_ld_idx_1),
-		.rob_i_alloc_opcode_1(ru_rs_opcode_1),
-		.rob_i_alloc_funct3_1(ru_rs_funct3_1),
-		.rob_i_alloc_funct7_1(ru_rs_funct7_1),
 		.rob_o_alloc_fire_1(rob_o_alloc_fire_1),
 		.rob_o_alloc_tag_1(rob_o_alloc_tag_1),
 
@@ -4106,9 +4303,6 @@ module datapath (
 		.rob_i_alloc_sq_idx_2(dispatch_sq_idx_2),
 		.rob_i_alloc_is_load_2(ru_rs_memtoreg_2),
 		.rob_i_alloc_ld_idx_2(dispatch_ld_idx_2),
-		.rob_i_alloc_opcode_2(ru_rs_opcode_2),
-		.rob_i_alloc_funct3_2(ru_rs_funct3_2),
-		.rob_i_alloc_funct7_2(ru_rs_funct7_2),
 		.rob_o_alloc_fire_2(rob_o_alloc_fire_2),
 		.rob_o_alloc_tag_2(rob_o_alloc_tag_2),
 
@@ -4152,6 +4346,13 @@ module datapath (
         .rob_o_can_alloc_2(rob_o_can_alloc_2)
     );
 
+    assign dbg_commit_valid_1 = rob_o_commit_valid_1;
+    assign dbg_commit_arch_rd_1 = rob_o_commit_arch_rd_1;
+    assign dbg_commit_data_1 = rob_o_commit_data_1;
+    assign dbg_commit_valid_2 = rob_o_commit_valid_2;
+    assign dbg_commit_arch_rd_2 = rob_o_commit_arch_rd_2;
+    assign dbg_commit_data_2 = rob_o_commit_data_2;
+
     // WB mirror tu ROB:
     // ROB cung cap dung new_prd cua entry da complete de PRF writeback chinh xac.
     assign wb_valid_1 = rob_o_wb_valid_1 & cpl_regwrite_1;
@@ -4160,6 +4361,29 @@ module datapath (
     assign wb_tag_2 = rob_o_wb_prd_2;
     assign wb_data_1 = rob_o_wb_data_1;
     assign wb_data_2 = rob_o_wb_data_2;
+
+    reg wb_ru_valid_1_q, wb_ru_valid_2_q;
+    reg [`RAT_SIZE - 1 : 0] wb_ru_tag_1_q, wb_ru_tag_2_q;
+    reg [`DWIDTH - 1 : 0] wb_ru_data_1_q, wb_ru_data_2_q;
+
+    always @(posedge dp_clk, negedge dp_rstn) begin
+        if (!dp_rstn) begin
+            wb_ru_valid_1_q <= 1'b0;
+            wb_ru_valid_2_q <= 1'b0;
+            wb_ru_tag_1_q <= {`RAT_SIZE{1'b0}};
+            wb_ru_tag_2_q <= {`RAT_SIZE{1'b0}};
+            wb_ru_data_1_q <= {`DWIDTH{1'b0}};
+            wb_ru_data_2_q <= {`DWIDTH{1'b0}};
+        end
+        else begin
+            wb_ru_valid_1_q <= rob_o_wb_valid_1 & cpl_regwrite_1;
+            wb_ru_valid_2_q <= rob_o_wb_valid_2 & cpl_regwrite_2;
+            wb_ru_tag_1_q <= rob_o_wb_prd_1;
+            wb_ru_tag_2_q <= rob_o_wb_prd_2;
+            wb_ru_data_1_q <= rob_o_wb_data_1;
+            wb_ru_data_2_q <= rob_o_wb_data_2;
+        end
+    end
 
     // ARF committed view (addr/data đến trực tiếp từ ROB commit).
     ARF u_arf (

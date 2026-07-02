@@ -14,7 +14,6 @@
 `define JAL    7'b1101111   // J-type: jump and link
 `define LUI    7'b0110111   // U-type: load upper immediate
 `define AUIPC  7'b0010111   // U-type: add upper immediate to PC
-
 // ============================================================
 // funct3 field: instruction[14:12]
 // ============================================================
@@ -147,6 +146,8 @@
 
 `define ROB_SIZE    64
 `define RS_SIZE     32
+`define LQ_SIZE     16
+`define SQ_SIZE     16
 `define RAT_SIZE    7
 
 // Number of bits needed to index ROB.

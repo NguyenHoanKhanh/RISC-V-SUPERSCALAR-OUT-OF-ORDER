@@ -80,6 +80,7 @@ module multiplication (
     wire rt_unsigned;
     wire signed [(2 * `DWIDTH) - 1 : 0] unsigned_rt_correction;
     wire signed [(2 * `DWIDTH) - 1 : 0] product_next;
+    wire signed [(2 * `DWIDTH) - 1 : 0] product_done;
 
     assign rs_signed = (op_funct3 == `MULH) || (op_funct3 == `MULHSU);
     assign rt_unsigned = (op_funct3 == `MUL) || (op_funct3 == `MULHSU) || (op_funct3 == `MULHU);
@@ -91,6 +92,7 @@ module multiplication (
         (rt_unsigned && op_data_rt[`DWIDTH - 1]) ? (rs_ext <<< `DWIDTH) :
         {(2 * `DWIDTH){1'b0}};
     assign product_next = accum_next + unsigned_rt_correction;
+    assign product_done = accum + unsigned_rt_correction;
 
     always @(*) begin
         if (count < (`DWIDTH / 2)) begin
@@ -156,8 +158,8 @@ module multiplication (
                 op_tag <= mult_i_tag;
             end
             else if (busy) begin
-                if (count == ((`DWIDTH / 2) - 1)) begin
-                    out_alu_value <= (op_funct3 == `MUL) ? product_next[31:0] : product_next[63:32];
+                if (count == (`DWIDTH / 2)) begin
+                    out_alu_value <= (op_funct3 == `MUL) ? product_done[31:0] : product_done[63:32];
                     out_opcode <= op_opcode;
                     out_reg_write <= op_reg_write;
                     out_rob_idx <= op_rob_idx;

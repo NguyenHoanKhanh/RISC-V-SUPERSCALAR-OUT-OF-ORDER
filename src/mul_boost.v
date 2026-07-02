@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-module mul_boost (
+module multiplication (
     mult_clk,
     mult_rst,
 
