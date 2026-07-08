@@ -1,3 +1,6 @@
+`ifndef ALU_CONTROL_V
+`define ALU_CONTROL_V
+`include "header_nomul.vh"
 `timescale 1ns/1ps
 
 // ALU control without MUL decode.
@@ -130,3 +133,4 @@ module alu_control (
         end
     end
 endmodule
+`endif
