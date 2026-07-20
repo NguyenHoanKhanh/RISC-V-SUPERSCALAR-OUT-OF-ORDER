@@ -96,6 +96,8 @@ module execute_stage (
     treat_jal tj (
         .tj_i_pc(es_i_pc),
         .tj_i_jal(es_i_jal),
+        .tj_i_opcode(es_i_opcode),
+        .tj_i_rs(es_i_data_rs),
         .tj_i_imm(es_i_imm),
         .tj_o_pc(tj_o_pc),
         .tj_o_ra(tj_o_ra),

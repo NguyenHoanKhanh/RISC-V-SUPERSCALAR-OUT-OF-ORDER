@@ -44,6 +44,7 @@ module decoder_stage (
     assign temp_funct7 = ds_i_instr[31 : 25];
 
     wire op_jal = temp_opcode == `JAL;
+    wire op_jalr = temp_opcode == `JALR;
     wire op_load = temp_opcode == `LOAD;
     wire op_rtype = temp_opcode == `RTYPE;
     wire op_itype = temp_opcode == `ITYPE;
@@ -178,22 +179,24 @@ module decoder_stage (
                 ds_o_funct7 = {`FUNCT7_WIDTH{1'b0}};
                 ds_o_imm = {ds_i_instr[31 : 12], 12'b0};
             end
-            else if (op_jal) begin
+            else if (op_jal || op_jalr) begin
                 ds_o_ce = 1'b1;
                 ds_o_jal = 1'b1;
                 ds_o_branch = 1'b0;
                 ds_o_regdst = 1'b1;
-                ds_o_alu_src = 1'b0;
+                ds_o_alu_src = op_jalr;
                 ds_o_regwrite = (rd != {`AWIDTH{1'b0}});
                 ds_o_addr_rd = rd;
                 ds_o_memwrite = 1'b0;
                 ds_o_memtoreg = 1'b0;
                 ds_o_opcode = temp_opcode;
-                ds_o_addr_rs = {`AWIDTH{1'b0}};
+                ds_o_addr_rs = op_jalr ? rs : {`AWIDTH{1'b0}};
                 ds_o_addr_rt = {`AWIDTH{1'b0}};
-                ds_o_funct3 = {`FUNCT3_WIDTH{1'b0}};
+                ds_o_funct3 = op_jalr ? temp_funct3 : {`FUNCT3_WIDTH{1'b0}};
                 ds_o_funct7 = {`FUNCT7_WIDTH{1'b0}};
-                ds_o_imm = {{12{ds_i_instr[31]}}, ds_i_instr[19 : 12], ds_i_instr[20], ds_i_instr[30 : 21], 1'b0};
+                ds_o_imm = op_jalr ?
+                           {{20{ds_i_instr[31]}}, ds_i_instr[31 : 20]} :
+                           {{12{ds_i_instr[31]}}, ds_i_instr[19 : 12], ds_i_instr[20], ds_i_instr[30 : 21], 1'b0};
             end
             else begin
                 ds_o_ce = 1'b0;

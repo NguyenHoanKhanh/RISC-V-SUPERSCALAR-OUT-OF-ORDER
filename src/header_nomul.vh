@@ -12,6 +12,7 @@
 `define LOAD   7'b0000011   // I-type: load instructions
 `define BTYPE  7'b1100011   // B-type: branch instructions
 `define JAL    7'b1101111   // J-type: jump and link
+`define JALR   7'b1100111   // I-type jump and link register
 `define LUI    7'b0110111   // U-type: load upper immediate
 `define AUIPC  7'b0010111   // U-type: add upper immediate to PC
 // ============================================================
