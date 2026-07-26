@@ -1,146 +1,110 @@
-# Research and Design of a Superscalar RISC-V Processor Based on the Improved Tomasulo Algorithm
+# RISC-V Superscalar Out-of-Order Processor
 
 <!--
-Image TODO:
-Add a project banner or processor overview diagram here.
-Recommended file: images/project_overview.png
+Demo link TODO:
+Replace the placeholder below with your Google Drive or YouTube demo link.
+Example:
+[Video Demo](https://youtu.be/your-demo-link)
 -->
+
+**Demo:** [Watch the FPGA demo on YouTube](https://youtu.be/68C5KNC8-I0)
 
 ## Table of Contents
 
 1. [About The Project](#about-the-project)
 2. [Key Features](#key-features)
-3. [Microarchitecture](#microarchitecture)
+3. [Architecture Overview](#architecture-overview)
 4. [Repository Structure](#repository-structure)
 5. [Getting Started](#getting-started)
 6. [How To Run](#how-to-run)
-7. [Benchmark And Verification](#benchmark-and-verification)
-8. [Current Results](#current-results)
+7. [Functional Verification](#functional-verification)
+8. [FPGA Implementation Results](#fpga-implementation-results)
 9. [Future Work](#future-work)
 10. [Contact](#contact)
 
 ## About The Project
 
-This project presents the research and RTL design of a 32-bit RISC-V Superscalar
-Out-of-Order processor based on an improved Tomasulo-style algorithm. The design
-focuses on exploiting instruction-level parallelism while preserving correct
-program behavior through register renaming, dynamic scheduling, and in-order
-commit.
+This repository contains the RTL source and verification flow for a 32-bit
+RISC-V Superscalar Out-of-Order processor based on an improved Tomasulo-style
+algorithm.
 
-The processor targets the RV32IM instruction subset and is implemented in
-Verilog/SystemVerilog for RTL simulation and FPGA-oriented synthesis. The main
-evaluation flow uses directed RV32IM-clean assembly benchmarks to verify
-functional correctness and measure commit/cycle performance.
-
-<!--
-Image TODO:
-Add a high-level block diagram of the processor.
-Suggested content:
-- Fetch / Decode
-- Rename Unit
-- Reservation Station
-- Execute Units
-- Load/Store Queue
-- Reorder Buffer
-- Physical Register File
-- Architectural Register File
-Recommended file: images/top_level_architecture.png
--->
+The design targets the RV32IM instruction subset and focuses on exploiting
+instruction-level parallelism through a 2-wide superscalar datapath, register
+renaming, dynamic instruction scheduling, and in-order commit. The processor is
+implemented in Verilog/SystemVerilog and evaluated through RTL simulation,
+RV32IM-clean directed assembly benchmarks, Quartus timing analysis, and FPGA
+board execution.
 
 ## Key Features
 
-- RV32IM-compatible instruction subset.
+- RV32IM instruction subset.
 - 2-wide superscalar instruction flow.
-- Out-of-order execution based on Tomasulo-style dynamic scheduling.
-- Register renaming to reduce false dependencies such as WAW and WAR hazards.
-- Physical Register File for renamed operand storage.
-- Reservation Station for dynamic issue of ready instructions.
-- Reorder Buffer for completion tracking and in-order commit.
-- Load/Store support through dedicated memory access structures.
+- Out-of-order issue and execution.
+- Register renaming using Rename Unit, RAT, Free List, and Physical Register File.
+- Dynamic scheduling through Reservation Station.
+- In-order commit through Reorder Buffer.
+- Load/Store support with Store Queue, Load Queue, and store-load checking.
 - Multi-cycle instruction support for RV32M operations.
 - RTL simulation with Icarus Verilog and VVP.
 - RV32IM-clean benchmark flow through Makefile targets.
+- FPGA-oriented synthesis and timing evaluation on Cyclone V DE1-SoC.
 
-## Microarchitecture
+## Architecture Overview
 
-The processor is organized around an improved Tomasulo-style backend. Incoming
-instructions are decoded and renamed before entering the out-of-order execution
-engine. Source operands are tracked through physical registers and wakeup/select
-logic. Ready instructions are issued from the Reservation Station to the
-available execution resources, while the Reorder Buffer preserves program order
-at commit.
+The processor follows a Tomasulo-style backend. Instructions are fetched and
+decoded, renamed into physical registers, dispatched into the Reservation
+Station and Reorder Buffer, issued to execution units when operands become
+ready, and finally committed in program order.
 
-Core microarchitectural blocks include:
+![Architecture overview](images/project_overview.jpg)
+
+Core microarchitectural blocks:
 
 | Block | Role |
 |---|---|
-| Program Counter / Instruction Memory | Fetches instruction words for the frontend. |
-| Decoder | Decodes RV32IM instruction fields and control information. |
-| Rename Unit | Maps architectural registers to physical registers. |
-| Physical Register File | Stores renamed register values. |
-| Reservation Station | Holds waiting instructions and issues ready operations. |
+| Program Counter / Instruction Memory | Fetches instruction words. |
+| Decoder | Decodes RV32IM instruction fields and control signals. |
+| Rename / Allocation Unit | Performs register renaming and physical register allocation. |
+| Physical Register File | Stores renamed operand values. |
+| Reservation Station | Holds waiting instructions and selects ready operations. |
 | Execute Units | Execute ALU, branch, multiply/divide, and memory-related operations. |
-| Load/Store Queue | Coordinates memory operations and load/store ordering behavior. |
-| Reorder Buffer | Tracks completion and commits instructions in program order. |
-| Architectural Register File | Holds committed architectural state. |
-
-<!--
-Image TODO:
-Add Tomasulo datapath diagram.
-Recommended file: images/tomasulo_datapath.png
--->
-
-<!--
-Image TODO:
-Add instruction flow diagram.
-Suggested stages:
-Fetch -> Decode -> Rename -> Dispatch -> Issue -> Execute -> Complete -> Commit
-Recommended file: images/instruction_flow.png
--->
+| Load/Store Unit | Handles load/store ordering, forwarding, and memory access. |
+| Reorder Buffer | Tracks completion and commits architectural state in order. |
+| Architectural Register File | Stores committed architectural register state. |
 
 ## Repository Structure
 
 ```text
 src/                         RTL source files
-test/                        Testbench files
+test/                        Verilog testbench files
 tools/                       Utility scripts for hex/program-info generation
 riscv-tests-master/isa/      RV32IM-clean benchmark assembly tests
 Makefile                     Main simulation and benchmark flow
 GNUmakefile                  Make wrapper
+images/                      README images and implementation result figures
 ```
 
 ## Getting Started
 
 ### Prerequisites
 
-The benchmark and simulation flow is intended to run in WSL/Linux with the
-following tools:
+The flow is intended to run in WSL/Linux with:
 
 - `riscv64-unknown-elf-gcc`
 - `riscv64-unknown-elf-objcopy`
 - `iverilog`
 - `vvp`
-- PowerShell, used by helper scripts in `tools/`
+- PowerShell, used by the helper scripts in `tools/`
 
 Optional waveform viewer:
 
 - `gtkwave`
 
-### Installation
-
-Clone the repository:
+### Clone
 
 ```bash
 git clone https://github.com/NguyenHoanKhanh/RISC-V-SUPERSCALAR-OUT-OF-ORDER.git
 cd RISC-V-SUPERSCALAR-OUT-OF-ORDER
-```
-
-Check that the required tools are available:
-
-```bash
-riscv64-unknown-elf-gcc --version
-iverilog -V
-vvp -V
 ```
 
 ## How To Run
@@ -166,48 +130,14 @@ make lw
 make mul
 ```
 
-The Makefile automatically:
+The Makefile flow builds the benchmark, converts it to instruction hex,
+updates program metadata, compiles the RTL testbench, and runs the simulation.
 
-1. Builds the selected assembly benchmark into an ELF file.
-2. Converts the ELF into a binary image.
-3. Generates `src/instr.hex` and `src/program_info.vh`.
-4. Compiles the RTL testbench with Icarus Verilog.
-5. Runs simulation using VVP.
-6. Prints pass/fail and performance counters.
+## Functional Verification
 
-## Benchmark And Verification
-
-The main verification flow uses RV32IM-clean directed assembly benchmarks. Each
-benchmark writes a pass/fail signature through the scoreboard convention used by
-the testbench. The simulation output includes commit count, cycle count, IPC,
-and final pass/fail status.
-
-Example output:
-
-```text
-RESULT: PASS
-PERF: cycles=<cycles> commits=<commits> IPC=<ipc>
-```
-
-The benchmark groups include:
-
-| Group | Purpose |
-|---|---|
-| RV32I R-type | Register-register ALU correctness and IPC. |
-| RV32I I/shift | Immediate and shift instruction behavior. |
-| Load/Store | Memory access correctness. |
-| RV32M | Multiply, divide, and remainder instruction behavior. |
-
-<!--
-Image TODO:
-Add waveform screenshot showing commit, ROB, RS, or register writeback behavior.
-Recommended file: images/waveform_commit_trace.png
--->
-
-## Current Results
-
-The stable RV32IM-clean report currently passes all benchmark groups in the
-published flow.
+The main functional verification flow uses RV32IM-clean directed assembly
+benchmarks. The testbench observes commit behavior and reports pass/fail status,
+commit count, cycle count, and IPC.
 
 Example local `make report_im` result:
 
@@ -215,50 +145,47 @@ Example local `make report_im` result:
 TOTAL | 37 | 15798 commits | 12852 cycles | IPC 1.229 | PASS
 ```
 
-Thesis-level synthesis and implementation observations include FPGA-oriented
-results on a Cyclone V DE1-SoC platform, with reported operating frequency around
-87 MHz in the evaluated Quartus setup.
+Functional execution evidence:
 
-<!--
-Image TODO:
-Add benchmark summary table or chart.
-Suggested content:
-- RV32I R-type IPC
-- RV32I I/shift IPC
-- Load/Store IPC
-- RV32M IPC
-- Total IPC
-Recommended file: images/rv32im_clean_ipc_summary.png
--->
+![Functional waveform trace](images/waveform_branch_trace.jpeg)
 
-<!--
-Image TODO:
-Add FPGA resource utilization chart.
-Suggested content:
-- ALMs
-- ALUTs
-- Logic registers
-- I/O pins
-Recommended file: images/fpga_resource_utilization.png
--->
+## FPGA Implementation Results
+
+The design was synthesized and evaluated using Quartus for the Cyclone V
+DE1-SoC FPGA platform. The following figures summarize board execution,
+maximum frequency, timing, and resource usage.
+
+### FPGA Board Execution
+
+![FPGA board result](images/fpga_board_result.jpeg)
+
+### Maximum Frequency
+
+![Fmax result](images/Fmax.jpg)
+
+### Timing Summary
+
+![Timing result](images/timing.jpg)
+
+### Resource Utilization
+
+![Resource utilization](images/resource.jpg)
 
 ## Future Work
 
-Potential development directions include:
-
-- Improving branch prediction and frontend redirection.
-- Extending speculation and rollback support.
-- Optimizing Load/Store Queue behavior.
-- Improving Reservation Station wakeup/select timing.
-- Reducing FPGA resource usage.
-- Increasing maximum operating frequency.
-- Expanding benchmark coverage beyond directed RV32IM-clean tests.
+- Improve branch prediction and frontend redirect handling.
+- Extend safe speculation and rollback support.
+- Optimize Load/Store Queue behavior.
+- Improve Reservation Station wakeup/select timing.
+- Reduce FPGA resource usage.
+- Increase maximum operating frequency.
+- Expand benchmark coverage beyond directed RV32IM-clean tests.
 
 ## Contact
 
 Nguyen Hoan Khanh
 
-Project repository:
+Repository:
 
 ```text
 https://github.com/NguyenHoanKhanh/RISC-V-SUPERSCALAR-OUT-OF-ORDER
