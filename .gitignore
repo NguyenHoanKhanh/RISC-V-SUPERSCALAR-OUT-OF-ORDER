@@ -1,6 +1,8 @@
 # Build and simulation outputs
 build/
 sim/
+logs/
+github_src_export/
 waveform/
 output_files/
 incremental_db/
@@ -84,3 +86,9 @@ riscv-tests-master/isa/macros/scalar/*
 !riscv-tests-master/isa/rv32i_mips_safe/**
 !riscv-tests-master/isa/rv32i_mips_friendly/
 !riscv-tests-master/isa/rv32i_mips_friendly/**
+
+MIPS_SUPERSCALAR/
+beebs_port/
+src_2/
+BENCHMARK_SELECTION_NOTES.md
+
