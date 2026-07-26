@@ -92,3 +92,6 @@ beebs_port/
 src_2/
 BENCHMARK_SELECTION_NOTES.md
 
+
+test/asm/
+
