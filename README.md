@@ -100,6 +100,32 @@ Optional waveform viewer:
 
 - `gtkwave`
 
+On Ubuntu/WSL, install the common simulation tools with:
+
+```bash
+sudo apt update
+sudo apt install -y make git iverilog gtkwave python3 powershell
+```
+
+Install the RISC-V bare-metal GCC toolchain. On some Ubuntu versions it is
+available from the package manager:
+
+```bash
+sudo apt install -y gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf
+```
+
+If the package is not available or does not provide the expected commands,
+install a prebuilt toolchain such as SiFive or xPack, then add its `bin`
+directory to `PATH`. After installation, these commands should work:
+
+```bash
+riscv64-unknown-elf-gcc --version
+riscv64-unknown-elf-objcopy --version
+iverilog -V
+vvp -V
+pwsh -Version
+```
+
 ### Clone
 
 ```bash
